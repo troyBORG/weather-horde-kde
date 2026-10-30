@@ -1,0 +1,22 @@
+[Unit]
+Description=Weather Horde owner-private on-demand ComfyUI
+PartOf=graphical-session.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/python3 %h/projects/weather-horde-kde/scripts/comfy-owner.py --start
+WorkingDirectory=/mnt/data-ssd/ComfyUI/app
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=XDG_CACHE_HOME=%h/.local/state/weather-horde-comfy/cache
+Environment=TMPDIR=%h/.local/state/weather-horde-comfy/scratch
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadOnlyPaths=/mnt/4tb/ai_models /mnt/data-ssd/ComfyUI/app
+ReadWritePaths=%h/.local/state/weather-horde-comfy
+StandardOutput=append:%h/.local/state/weather-horde-comfy/log/comfy.log
+StandardError=append:%h/.local/state/weather-horde-comfy/log/comfy.log
+Restart=no
+TimeoutStopSec=30
+KillMode=control-group
+# Deliberately no Install section: never boot/login enabled.

@@ -1,0 +1,13 @@
+{
+  "KPlugin": {
+    "Id": "org.troyborg.weatherhorde",
+    "Name": "Weather Horde",
+    "Description": "Local weather wallpaper controls",
+    "Icon": "weather-clear",
+    "Version": "0.1.10",
+    "License": "GPL-3.0-or-later",
+    "EnabledByDefault": true
+  },
+  "X-Plasma-API-Minimum-Version": "6.0",
+  "KPackageStructure": "Plasma/Applet"
+}

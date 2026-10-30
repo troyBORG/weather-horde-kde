@@ -1,0 +1,7 @@
+{
+  "version": "2.1.19",
+  "wheel": "https://files.pythonhosted.org/packages/67/87/47c093c8ac29ee737de6d6a8957ff9e2dc3a36427b392fdca2d1b05bdab0/astronomy_engine-2.1.19-py3-none-any.whl",
+  "sha256": "232ba7dd2bbf42225c48be6721b676e8c6c079dbd4588d2781dfa68adcb6f67f",
+  "source": "https://github.com/cosinekitty/astronomy",
+  "note": "Unmodified astronomy/astronomy.py vendored as astronomy_vendor.py; MIT license; pure standard-library offline ephemeris."
+}
