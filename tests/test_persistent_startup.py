@@ -29,6 +29,11 @@ class StartupTests(unittest.TestCase):
             self.assertLess(c.next_eligible_at, before+1802)
             self.assertEqual(p.read_text(),raw)
 
+    def test_catchup_opt_in_preserves_exact_prior_auto_and_scope(self):
+        original={'automation_enabled':False,'automation_kind':'image_preview','automation_target':'DP-3','interval_minutes':120,'location':{'town':'fixture'}}
+        result=m.requested_settings(json.dumps(original),False,enable_catchup=True)
+        self.assertEqual(result,original|{'catch_up_refresh':True})
+
     def test_saved_off_stays_off_and_explicit_restore_changes_only_consent(self):
         original={'automation_enabled':False,'automation_kind':'prompt_preview','automation_target':'DP-2',
                   'interval_minutes':60,'checkpoint':'saved.safetensors','location':{'zip':'52742'},'scene_kind':'random'}
@@ -116,7 +121,11 @@ class StartupTests(unittest.TestCase):
     def test_failed_reload_rolls_back_without_start_or_config_loss(self):
         self._fixture_install(True, fail_reload=True)
 
-    def _fixture_install(self, enabled, fail_reload=False):
+    def test_catchup_installer_preserves_auto_on_and_off_and_rolls_back(self):
+        for enabled in (False, True): self._fixture_install(enabled, enable_catchup=True)
+        self._fixture_install(True, fail_reload=True, enable_catchup=True)
+
+    def _fixture_install(self, enabled, fail_reload=False, enable_catchup=False):
         # Real filesystem writes/locks, actual systemd verifier and authenticated
         # validation logic; user manager and display edges are fixtures, no GPU.
         from weather_controller import SOURCE_REVISION
@@ -150,6 +159,7 @@ class StartupTests(unittest.TestCase):
                 elif args[0]=='start': active=True
                 return subprocess.CompletedProcess(args,0,out,'')
             settings=json.loads(raw)
+            if enable_catchup: settings['catch_up_refresh']=True
             ready=settings|{'source_revision':SOURCE_REVISION,'service_version':'test','render_enabled':True,'apply_enabled':True,'displays':[{'id':'DP-2'}],'testing_override':{'active':False},'comfy_service':{'managed':True},'next_eligible_at':time.time()+1800,'guard':{'decision':'unknown'}}
             # Only fixture ownership mapping; production wrong-owner CLI is
             # separately exercised without this patch and must refuse.
@@ -161,7 +171,7 @@ class StartupTests(unittest.TestCase):
                     (m.socket,'socket',unittest.mock.MagicMock())]: stack.enter_context(patch.object(obj,name,value))
                 stack.enter_context(patch.dict(os.environ,{'WAYLAND_DISPLAY':'fixture','XDG_RUNTIME_DIR':'/run/user/'+str(os.getuid())}))
                 stack.enter_context(patch('displays.discover',return_value=([{'id':'DP-2'}],None)))
-                stack.enter_context(patch.object(sys_module(),'argv',['installer','--manual-wallpapers','--managed-comfy']))
+                stack.enter_context(patch.object(sys_module(),'argv',['installer','--manual-wallpapers','--managed-comfy']+(['--enable-catch-up-refresh'] if enable_catchup else [])))
                 output=io.StringIO()
                 if fail_reload:
                     with contextlib.redirect_stdout(output), self.assertRaises(subprocess.CalledProcessError): m.main()
@@ -171,7 +181,8 @@ class StartupTests(unittest.TestCase):
                     self.assertFalse(any(c[0] in ('start','stop','restart') for c in calls))
                     return
                 with contextlib.redirect_stdout(output): m.main()
-                self.assertEqual((state/'settings.json').read_bytes(),raw)
+                expected_raw=json.dumps(settings,indent=2).encode() if enable_catchup else raw
+                self.assertEqual((state/'settings.json').read_bytes(),expected_raw)
                 self.assertTrue(link.is_symlink());self.assertEqual(link.resolve(),dest)
                 self.assertNotIn('x'*40,output.getvalue())
                 self.assertTrue(active)

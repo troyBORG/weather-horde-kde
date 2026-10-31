@@ -56,7 +56,7 @@ def command(args, settings, state):
     return argv
 
 
-def requested_settings(raw, restore):
+def requested_settings(raw, restore, enable_catchup=False):
     settings=json.loads(raw)
     if type(settings.get('automation_enabled')) is not bool:
         raise ValueError('Saved automation consent missing; refusing defaults')
@@ -66,6 +66,7 @@ def requested_settings(raw, restore):
         if not settings.get('location'): raise ValueError('Confirm location in widget before restoring Auto')
         settings.update(automation_enabled=True, automation_kind='image_wallpaper',
                         automation_target='all', interval_minutes=30)
+    if enable_catchup: settings['catch_up_refresh'] = True
     return settings
 
 
@@ -153,6 +154,7 @@ def api(token):
 
 
 def verify_status(status, expected, argv, revision):
+    if status.get('catch_up_refresh',False)!=expected.get('catch_up_refresh',False): raise RuntimeError('Catch-up policy mismatch')
     if status.get('source_revision')!=revision: raise RuntimeError('Loaded source revision mismatch')
     if any(status.get(k)!=expected.get(k) for k in AUTO_KEYS): raise RuntimeError('Automation settings mismatch')
     if (not status.get('displays') or status.get('testing_override',{}).get('active') is not False
@@ -190,6 +192,8 @@ def main():
     parser.add_argument('--comfy-idle-seconds',type=int,default=300)
     parser.add_argument('--restore-30min-generate-apply-all',action='store_true',
                         help='Explicit consent: Auto ON, image_wallpaper, all monitors, 30 minutes; retains location/model/scene')
+    parser.add_argument('--enable-catch-up-refresh',action='store_true',
+                        help='Opt in to overdue unlock/game catch-up and locked-session pause; preserve Auto/mode/scope/interval')
     parser.add_argument('--rollback',type=Path,help='Restore one installer backup, only while controller stopped')
     args=parser.parse_args()
     require_configured_owner()
@@ -228,7 +232,7 @@ def main():
         displays,error=discover()
         if error or not displays: raise RuntimeError('Owner live display discovery failed')
         raw=private_read(state/'settings.json')
-        settings=requested_settings(raw,args.restore_30min_generate_apply_all)
+        settings=requested_settings(raw,args.restore_30min_generate_apply_all,args.enable_catch_up_refresh)
         if args.restore_30min_generate_apply_all and not args.manual_wallpapers:
             raise ValueError('Explicit Auto restore requires --manual-wallpapers')
         argv=command(args,settings,state)
@@ -250,7 +254,7 @@ def main():
         try:
             require_stopped()
             atomic(destination,new)
-            if args.restore_30min_generate_apply_all:
+            if args.restore_30min_generate_apply_all or args.enable_catch_up_refresh:
                 atomic(state/'settings.json',json.dumps(settings,indent=2).encode())
             elif private_read(state/'settings.json')!=raw:
                 raise RuntimeError('Settings changed concurrently')
@@ -282,7 +286,8 @@ def main():
     p=props()
     if p.get('ActiveState')!='active' or p.get('Transient')!='no' or p.get('FragmentPath')!=str(destination):
         raise RuntimeError('Persistent running service identity not verified')
-    if not args.restore_30min_generate_apply_all and private_read(state/'settings.json')!=raw:
+    expected_raw = json.dumps(settings,indent=2).encode() if args.restore_30min_generate_apply_all or args.enable_catch_up_refresh else raw
+    if private_read(state/'settings.json')!=expected_raw:
         raise RuntimeError('Saved settings bytes changed unexpectedly')
     receipt={k:status[k] for k in (*AUTO_KEYS,'source_revision','service_version','next_eligible_at','render_enabled','apply_enabled')}
     receipt.update(enabled=True,target='graphical-session.target',managed_comfy=status['comfy_service']['managed'],
@@ -290,7 +295,7 @@ def main():
                    verified='Authenticated backend; enabled target link; NOT UI reconnect or completed render/apply')
     atomic(backup/'receipt.json',json.dumps(receipt,indent=2).encode())
     print(json.dumps(receipt,indent=2))
-    print('Login persistence installed. Saved Auto may run only on its interval through existing guards. No forced generation/apply or Plasma restart.')
+    print('Login persistence installed. Saved Auto may run when due (including opted-in catch-up), through existing guards. No forced generation/apply or Plasma restart.')
 
 if __name__=='__main__':
     try: main()

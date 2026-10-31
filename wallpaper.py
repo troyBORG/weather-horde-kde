@@ -85,8 +85,10 @@ class WallpaperManager:
         self.backend.replace(display,before,after)
         if self.backend.snapshot(display)!=after:
             raise ValueError('Wallpaper readback failed; restore receipt retained')
-        journal[display['id']]['state']='applied'; atomic_json(self.journal,journal)
-        return {'state':'applied','target':display['id'],'preview_id':identifier,'verified':True}
+        applied_at = time.time()
+        journal[display['id']].update(state='applied', applied_at=applied_at, preview_id=identifier)
+        atomic_json(self.journal,journal)
+        return {'state':'applied','target':display['id'],'preview_id':identifier,'verified':True,'applied_at':applied_at}
 
     def reconcile_pending(self, display, commit=False):
         """DP-2 receipt-only recovery. Caller MUST exclude concurrent writers.
