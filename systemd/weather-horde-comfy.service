@@ -1,21 +1,24 @@
+# Rendered by scripts/install-comfy-service.py; do not install this template directly.
 [Unit]
 Description=Weather Horde owner-private on-demand ComfyUI
 PartOf=graphical-session.target
 
 [Service]
 Type=exec
-ExecStart=/usr/bin/python3 %h/projects/weather-horde-kde/scripts/comfy-owner.py --start
-WorkingDirectory=/mnt/data-ssd/ComfyUI/app
+ExecStart=/usr/bin/python3 @LAUNCHER@ --start
+WorkingDirectory=@COMFY_ROOT@
 Environment=PYTHONDONTWRITEBYTECODE=1
-Environment=XDG_CACHE_HOME=%h/.local/state/weather-horde-comfy/cache
-Environment=TMPDIR=%h/.local/state/weather-horde-comfy/scratch
+Environment=@CACHE_ENV@
+Environment=@TMP_ENV@
+Environment=@OWNER_ENV@
+Environment=@COMFY_ENV@
 UMask=0077
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadOnlyPaths=/mnt/4tb/ai_models /mnt/data-ssd/ComfyUI/app
-ReadWritePaths=%h/.local/state/weather-horde-comfy
-StandardOutput=append:%h/.local/state/weather-horde-comfy/log/comfy.log
-StandardError=append:%h/.local/state/weather-horde-comfy/log/comfy.log
+ReadOnlyPaths=@COMFY_READONLY@
+ReadWritePaths=@STATE@
+StandardOutput=append:@LOG@
+StandardError=append:@LOG@
 Restart=no
 TimeoutStopSec=30
 KillMode=control-group

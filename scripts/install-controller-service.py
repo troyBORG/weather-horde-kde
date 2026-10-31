@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install persistent graphical-session controller as troyborg, with saved Auto unchanged.
+"""Install persistent graphical-session controller as the configured owner, with saved Auto unchanged.
 Refuses a running controller: never kills a job to deploy. No direct GPU/apply calls.
 """
 import argparse
@@ -17,6 +17,8 @@ import time
 from urllib.request import Request, build_opener, ProxyHandler
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from portable_paths import require_owner as require_configured_owner, trusted_source_uids, comfy_root
 UNIT = 'weather-horde-kde.service'
 ENV_KEYS = ('DISPLAY','WAYLAND_DISPLAY','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS',
             'XDG_SESSION_TYPE','XDG_CURRENT_DESKTOP','XDG_DATA_DIRS','LANG')
@@ -36,6 +38,7 @@ def render_unit(argv):
             '[Service]\nType=exec\nWorkingDirectory='+str(ROOT).replace('%','%%')+'\n'
             'ExecStart='+ ' '.join(map(quote,argv))+'\n'
             'Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1\n'
+            'Environment='+quote('WEATHER_HORDE_COMFY_ROOT='+str(comfy_root())).replace('$$', '$')+'\n'
             'Restart=on-failure\nRestartSec=15\nTimeoutStopSec=30\n'
             'NoNewPrivileges=true\nUMask=0077\n\n'
             '[Install]\nWantedBy=graphical-session.target\n')
@@ -189,15 +192,14 @@ def main():
                         help='Explicit consent: Auto ON, image_wallpaper, all monitors, 30 minutes; retains location/model/scene')
     parser.add_argument('--rollback',type=Path,help='Restore one installer backup, only while controller stopped')
     args=parser.parse_args()
-    if os.getuid()==0 or pwd.getpwuid(os.getuid()).pw_name!='troyborg':
-        raise RuntimeError('Run in troyborg KDE terminal, never sudo or jorden; no changes made')
+    require_configured_owner()
     os.umask(0o077)
     if not 30<=args.comfy_idle_seconds<=86400: raise ValueError('Invalid Comfy idle timeout')
     if not os.environ.get('WAYLAND_DISPLAY') or os.environ.get('XDG_RUNTIME_DIR')!='/run/user/'+str(os.getuid()):
         raise RuntimeError('Run inside the owner Wayland graphical session')
     if ctl('is-active','graphical-session.target',check=False).stdout.strip()!='active':
         raise RuntimeError('Owner graphical-session.target not active')
-    trusted=(0,os.getuid(),pwd.getpwnam('jorden').pw_uid)
+    trusted=trusted_source_uids()
     for path in [*ROOT.glob('*.py'), Path(__file__).resolve()]: safe_path(path,trusted)
     sys.path.insert(0,str(ROOT))
     from receipt_lock import state_lock

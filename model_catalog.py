@@ -6,7 +6,8 @@ from tensor shapes, never inferred from the filename. Unknown/ckpt withheld.
 import json, os, struct, subprocess
 from pathlib import Path
 
-COMFY = Path('/mnt/data-ssd/ComfyUI/app')
+from portable_paths import comfy_root
+COMFY = comfy_root()
 REVIEWED = {'natvisNaturalVision_v27.safetensors','absolutereality.safetensors',
             'juggernautXL_ragnarokBy.safetensors','albedobaseXL_V31Large.safetensors','sd_xl_base_1.0.safetensors'}
 PROFILES = {

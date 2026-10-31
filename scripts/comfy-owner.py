@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Owner Comfy handoff. Default read-only; --start explicitly starts, never stops.
-Run in troyborg's KDE terminal. No render submission or controller changes.
+Run in the configured owner's KDE terminal. No render submission or controller changes.
 """
 import argparse
 import json
@@ -11,13 +11,15 @@ import socket
 import sys
 from urllib.request import build_opener, ProxyHandler
 
-ROOT=Path('/mnt/data-ssd/ComfyUI/app')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from portable_paths import comfy_root, require_owner as require_configured_owner
+ROOT=comfy_root()
 
 def require_launch(uid, owner_uid, listeners):
     if uid != owner_uid:
-        raise RuntimeError("Run in troyborg's KDE terminal, not jorden SSH.")
+        raise RuntimeError("Run in the configured owner's KDE graphical terminal.")
     if listeners:
-        raise RuntimeError('8188 is occupied (listener UID/inode: '+repr(listeners)+'). No process was stopped. If this is the verified jorden Comfy, ask the assistant for a separately authorized idle-only stop; never sudo/kill an unverified listener.')
+        raise RuntimeError('8188 is occupied (listener UID/inode: '+repr(listeners)+'). No process was stopped. Arrange a separately authorized idle-only stop of the verified listener; never sudo/kill an unverified listener.')
 
 def listeners():
     found=[]
@@ -32,10 +34,10 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--start',action='store_true',help='Explicit start only after old Comfy is separately stopped; stays in foreground')
     args=parser.parse_args()
-    owner=pwd.getpwnam('troyborg')
+    owner=require_configured_owner()
     if os.getuid()!=owner.pw_uid:
-        raise RuntimeError("Run in troyborg's KDE terminal, not jorden SSH.")
-    paths=[ROOT/'main.py',ROOT/'.venv/bin/python',ROOT/'extra_model_paths.yaml',Path('/mnt/4tb/ai_models')]
+        raise RuntimeError("Run in the configured owner's KDE graphical terminal.")
+    paths=[ROOT/'main.py',ROOT/'.venv/bin/python',ROOT/'extra_model_paths.yaml']
     for path in paths:
         if not os.access(path,os.R_OK | (os.X_OK if path.is_dir() or path.name=='python' else 0)):
             raise RuntimeError('Not accessible: '+str(path))

@@ -13,8 +13,8 @@ class AutoPairingInstallTests(unittest.TestCase):
         return module
     def test_non_owner_cannot_install_or_reload(self):
         module=self.load()
-        with patch.object(module.pwd,'getpwuid') as owner, patch.object(module.subprocess,'run') as run:
-            owner.return_value.pw_name='jorden'
+        with patch.dict('os.environ', {'WEATHER_HORDE_OWNER':'fixture-owner'}), patch.object(module.pwd,'getpwnam') as owner, patch.object(module.subprocess,'run') as run:
+            owner.return_value.pw_uid=-1
             with self.assertRaisesRegex(RuntimeError,'owner'): module.install(reload=True)
             run.assert_not_called()
     def test_verify_release_without_install(self):

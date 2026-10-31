@@ -8,17 +8,19 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from portable_paths import require_owner as require_configured_owner
 import pwd
 import stat
 import subprocess
-import sys
 import tempfile
 import time
 from urllib.request import Request, build_opener, ProxyHandler
 
 ROOT=Path(__file__).resolve().parents[1]
 UNIT='weather-horde-kde.service'
-ENV_KEYS=('HOME','PATH','LANG','LC_ALL','XDG_RUNTIME_DIR','XDG_SESSION_TYPE',
+ENV_KEYS=('WEATHER_HORDE_COMFY_ROOT','WEATHER_HORDE_OWNER','HOME','PATH','LANG','LC_ALL','XDG_RUNTIME_DIR','XDG_SESSION_TYPE',
           'WAYLAND_DISPLAY','DISPLAY','DBUS_SESSION_BUS_ADDRESS','XDG_CURRENT_DESKTOP',
           'XDG_DATA_DIRS','XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_STATE_HOME','QT_QPA_PLATFORM')
 
@@ -104,8 +106,7 @@ def private_read(path):
 
 class OwnerIO:
     def __init__(self):
-        if pwd.getpwuid(os.getuid()).pw_name!='troyborg':
-            raise RuntimeError('Run in troyborg KDE terminal; no cross-user access')
+        require_configured_owner()
         sys.path.insert(0,str(ROOT))
         self.state=Path.home()/'.local/state/weather-horde-kde'
         self.token=private_read(self.state/'token').decode().strip()

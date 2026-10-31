@@ -2,7 +2,8 @@
 import os
 from pathlib import Path
 
-COMFY_ROOT = Path('/mnt/data-ssd/ComfyUI/app')
+from portable_paths import comfy_root
+COMFY_ROOT = comfy_root()
 
 
 def listener_identity(port, proc=Path('/proc'), uid=None):

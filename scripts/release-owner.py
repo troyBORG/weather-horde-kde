@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Owner-only 0.1.10 rollout + optional single LEFT preview; never apply/restore.
-Run in troyborg's KDE terminal. No override, downloads, batch or foreign Comfy.
+Run in the configured owner's KDE terminal. No override, downloads, batch or foreign Comfy.
 """
 import argparse, hashlib, json, os, pwd, stat, subprocess, sys, time
 from pathlib import Path
 from urllib.request import Request, build_opener, ProxyHandler
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
+from portable_paths import require_owner as require_configured_owner
 from weather_controller import SOURCE_REVISION, SERVICE_VERSION
 from scene import PROMPT_VERSION
 
@@ -31,7 +32,7 @@ def main():
     parser.add_argument('--render-left',action='store_true')
     parser.add_argument('--reload-shell',action='store_true')
     args=parser.parse_args()
-    if pwd.getpwuid(os.getuid()).pw_name!='troyborg': raise RuntimeError('Run in troyborg KDE terminal; SSH jorden cannot authenticate/reload/render')
+    require_configured_owner()
     from displays import discover
     from wallpaper import PlasmaBackend, atomic_json
     displays,error=discover()

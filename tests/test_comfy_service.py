@@ -215,9 +215,10 @@ class InstallerTests(unittest.TestCase):
                 token=home/'token';token.write_text('fixture-preserve')
                 def run(command, **kwargs): return SimpleNamespace(stdout='loaded\n' if 'show' in command else '',returncode=0)
                 with patch.object(module,'ROOT',source), patch.object(module,'require_owner'), patch.object(module.Path,'home',return_value=home), patch.object(module.pwd,'getpwnam',return_value=SimpleNamespace(pw_uid=os.getuid())), patch.object(module.subprocess,'run',side_effect=run) as commands, patch.object(module.sys,'argv',['installer']):
+                    expected_unit = module.render_unit()
                     module.main()
                 unit=home/'.config/systemd/user/weather-horde-comfy.service'
-                self.assertEqual(unit.read_bytes(),Path('systemd/weather-horde-comfy.service').read_bytes())
+                self.assertEqual(unit.read_text(), expected_unit)
                 self.assertEqual(token.read_text(),'fixture-preserve')
                 for call in commands.call_args_list:
                     self.assertNotIn('enable',call.args[0]);self.assertNotIn('start',call.args[0]);self.assertNotIn('--reload-shell',call.args[0])
@@ -230,13 +231,13 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue(unit.exists(), 'On-demand user unit missing')
         text = unit.read_text()
         self.assertNotIn('WantedBy=', text)
-        self.assertIn('ReadOnlyPaths=/mnt/4tb/ai_models /mnt/data-ssd/ComfyUI/app', text)
+        self.assertIn('ReadOnlyPaths=@COMFY_READONLY@', text)
         self.assertIn('UMask=0077', text)
         spec=importlib.util.spec_from_file_location('install_service', 'scripts/install-comfy-service.py')
         module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-        with patch.object(module.pwd,'getpwuid') as user, patch.object(module.subprocess,'run') as run:
-            user.return_value.pw_name='jorden'
-            with self.assertRaisesRegex(RuntimeError,'troyborg'): module.require_owner()
+        with patch.dict('os.environ', {'WEATHER_HORDE_OWNER':'fixture-owner'}), patch.object(module.pwd,'getpwnam') as user, patch.object(module.subprocess,'run') as run:
+            user.return_value.pw_uid=-1
+            with self.assertRaisesRegex(RuntimeError,'owner'): module.require_owner()
             run.assert_not_called()
 
 if __name__ == '__main__': unittest.main()

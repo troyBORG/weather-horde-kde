@@ -7,11 +7,11 @@ from pathlib import Path
 from urllib.request import Request, build_opener, ProxyHandler
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
+from portable_paths import require_owner as require_configured_owner
 
 
 def require_owner():
-    if pwd.getpwuid(os.getuid()).pw_name!='troyborg':
-        raise RuntimeError('Run in the troyborg KDE owner terminal; no cross-user access')
+    require_configured_owner()
 
 
 def safe_text(value):

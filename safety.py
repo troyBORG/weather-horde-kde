@@ -203,7 +203,7 @@ def collect(previous=None, transport=None):
     """Read commands, never environment/secrets; cross-user visibility is incomplete.
 
     Native games not matching a configured pattern cannot be proven absent under
-    another UID. Thus a jorden controller cannot declare troyborg's session safe.
+    another UID. Thus one user's controller cannot declare another user's session safe.
     """
     now = time.monotonic()
     try:

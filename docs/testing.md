@@ -4,6 +4,12 @@ The publication candidate was copied to a fresh scratch tree on a CachyOS deskto
 
 There are **188 unique unittest IDs**, not 189 unique methods: `test_electron_identity.ElectronIdentityTests.test_verified_element_ancestry` is discovered twice through an imported class. We preserved standard discovery behavior rather than silently deduplicating it. No subtest count is added to this total. A previous external AST-based audit runner could not enumerate inherited methods in this snapshot; a count-only standard-unittest runner was used instead. No product/test source was changed to obtain a pass.
 
+## Portability validation — 2026-10-31
+
+The portability branch uses temporary Comfy files and explicit synthetic account/UID fixtures instead of installed model paths or named developer accounts. Standard discovery executed **199 cases / 198 unique IDs, with zero failures, errors or skips** in an isolated non-owner desktop scratch tree. The duplicate imported test ID described above remains intentional. Native package build, token-reader probe, offscreen Plasma/QML harness and real generated-unit `systemd-analyze --user verify` checks passed. Offscreen Qt emits expected missing-display/window-shadow warnings; this is not a warning-free graphical-session test.
+
+New regressions cover configured/default Comfy paths, absolute-path rejection, same-UID/non-root owner selection, explicit staging trust, checkout-relative launching, transient environment propagation, unit syntax and literal dollar/template-token paths. Fail-first runs caught the original fixed mount/home paths and unit escaping mistakes before the passing runs. No production owner bus, GPU job, service restart or wallpaper action was used. Owner deployment and actual live generation remain separate acceptance work.
+
 ## Verified toolchain
 
 ```text
@@ -25,7 +31,7 @@ The suite includes the compiled Qt token reader and real offscreen Plasma/QML ha
 
 ## Reproduction
 
-Use a **disposable checkout** with the above dependencies under the existing non-owner developer account. This suite is still site-dependent: two Comfy handoff cases inspect existing model/install path accessibility and owner policy fixtures expect existing accounts. Do not advertise a generic clean-machine CI pass. Keep the normal non-owner HOME under trusted non-world-writable ancestors; using HOME beneath `/tmp` conflicts with the installer's safety checks.
+Use a **disposable checkout** with the above dependencies under the existing non-owner developer account. The historical snapshot above had two Comfy handoff cases dependent on installed model paths and owner fixtures dependent on site accounts. The portability revision replaces those dependencies with temporary files and synthetic account fixtures. Native Qt/Plasma/systemd dependencies are still required; this is not a generic dependency-free CI claim. Keep the normal non-owner HOME under trusted non-world-writable ancestors; using HOME beneath `/tmp` conflicts with the installer's safety checks.
 
 Set SCRATCH to a freshly created private directory under that account's home, containing the disposable source as `repo/`. Then:
 

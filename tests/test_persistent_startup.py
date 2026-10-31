@@ -156,7 +156,7 @@ class StartupTests(unittest.TestCase):
             import types
             with contextlib.ExitStack() as stack:
                 for obj,name,value in [(Path,'home',lambda:home),(m,'ctl',ctl),(m,'props',properties),
-                    (m,'api',lambda token:ready),(m.pwd,'getpwuid',lambda uid:types.SimpleNamespace(pw_name='troyborg')),
+                    (m,'api',lambda token:ready),(m,'require_configured_owner',lambda:None),
                     (m.pwd,'getpwnam',lambda name:types.SimpleNamespace(pw_uid=ROOT.parent.parent.stat().st_uid)),
                     (m.socket,'socket',unittest.mock.MagicMock())]: stack.enter_context(patch.object(obj,name,value))
                 stack.enter_context(patch.dict(os.environ,{'WAYLAND_DISPLAY':'fixture','XDG_RUNTIME_DIR':'/run/user/'+str(os.getuid())}))

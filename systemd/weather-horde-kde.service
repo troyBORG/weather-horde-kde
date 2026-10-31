@@ -5,8 +5,10 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/projects/weather-horde-kde
-ExecStart=/usr/bin/python3 %h/projects/weather-horde-kde/weather_controller.py
+# Example only: replace @REPO@ with your absolute reviewed checkout.
+# Prefer scripts/install-controller-service.py, which generates the actual unit.
+WorkingDirectory=@REPO@
+ExecStart=/usr/bin/python3 @REPO@/weather_controller.py
 Restart=on-failure
 RestartSec=10
 NoNewPrivileges=true

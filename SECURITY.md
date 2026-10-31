@@ -6,4 +6,4 @@ Owner installers, model/queue identity checks, render safety and transactional w
 
 Before reporting a bug, remove tokens, settings/location, usernames, home/mount paths, process arguments, image metadata, activity identifiers and private desktop screenshots. Provide a synthetic reproducer and reviewed source revision instead of raw state archives. Do not post a vulnerability containing credentials in a public issue. No dedicated private reporting address has been approved yet; ask the maintainer for a private channel before sharing sensitive details.
 
-No security audit certification is claimed. Secret scanning cannot establish that source contains no personal information. Existing owner/path/geographic source constants require a separate public-disclosure or portability decision.
+No security audit certification is claimed. Secret scanning cannot establish that source contains no personal information. Owner selection and Comfy paths are explicit deployment configuration; review them as executable-code trust decisions. Geographic defaults and legacy recovery targets are not changed by path portability.

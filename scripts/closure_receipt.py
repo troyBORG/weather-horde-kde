@@ -8,6 +8,7 @@ import subprocess
 import time
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from portable_paths import data_home
 from comfy_preview import ComfyTransport, build_workflow
 from safety import collect
 
@@ -39,8 +40,8 @@ receipt={'timestamp':time.time(),'tests_passed':count,'test_log':'artifacts/clos
     'existing_service':run('systemctl','--user','is-active','weather-horde-preview.service'),
     'index_sha256':index_after,'index_unchanged':index_before==index_after=='bd81cc9407827c48f7b2d4b5dd593ed5474e702932b6e55969fb5b7e2811cb1f',
     'graphical_owner':run('ps','-C','plasmashell','-o','uid=,pid='),
-    'owner_package_dir_writable':os.access('/home/troyborg/.local/share/plasma/plasmoids',os.W_OK),
-    'live_package_installed':Path('/home/troyborg/.local/share/plasma/plasmoids/org.troyborg.weatherhorde').exists(),
+    'owner_package_dir_writable':os.access(data_home()/'plasma/plasmoids',os.W_OK),
+    'live_package_installed':(data_home()/'plasma/plasmoids/org.troyborg.weatherhorde').exists(),
     'package':json.loads((root/'artifacts/package-receipt.json').read_text()),
     'git_diff_check':run('git','diff','--check'),'git_cached_check':run('git','diff','--cached','--check'),
     'gpu_renders_performed':False,'wallpaper_changes':False,'existing_services_restarted':False,

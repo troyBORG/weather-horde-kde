@@ -109,7 +109,7 @@ class RecoveryTests(unittest.TestCase):
     def test_wrong_owner_before_any_state_or_bus_access(self):
         from unittest.mock import patch
         m=self.load()
-        with patch.object(m.pwd,'getpwuid',return_value=Mock(pw_name='jorden')), patch.object(m,'private_read') as read, patch.object(m.subprocess,'run') as run:
+        with patch.dict('os.environ', {'WEATHER_HORDE_OWNER':'fixture-owner'}), patch.object(m.pwd,'getpwnam',return_value=Mock(pw_uid=-1)), patch.object(m,'private_read') as read, patch.object(m.subprocess,'run') as run:
             with self.assertRaises(RuntimeError): m.OwnerIO()
             read.assert_not_called();run.assert_not_called()
 
