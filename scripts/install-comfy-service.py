@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import shutil
 import stat
 import subprocess
@@ -14,12 +15,36 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from portable_paths import require_owner as require_configured_owner, trusted_source_uids, comfy_root
 UNIT = 'weather-horde-comfy.service'
 
 
 def require_owner():
-    if pwd.getpwuid(os.getuid()).pw_name != 'troyborg' or os.getuid() == 0:
-        raise RuntimeError("Run as troyborg in the KDE terminal, never root or jorden")
+    require_configured_owner()
+
+
+def unit_quote(value):
+    value = str(value)
+    if any(ord(c) < 32 for c in value): raise ValueError('Control character in unit value')
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%') + '"'
+
+
+def render_unit():
+    state = Path.home()/'.local/state/weather-horde-comfy'
+    values = {
+        'LAUNCHER': unit_quote(ROOT/'scripts/comfy-owner.py').replace('$', '$$'),
+        'COMFY_ROOT': str(comfy_root()).replace('%', '%%'),
+        'COMFY_READONLY': unit_quote(comfy_root()),
+        'OWNER_ENV': unit_quote('WEATHER_HORDE_OWNER='+os.environ.get('WEATHER_HORDE_OWNER', '')),
+        'COMFY_ENV': unit_quote('WEATHER_HORDE_COMFY_ROOT='+str(comfy_root())),
+        'CACHE_ENV': unit_quote('XDG_CACHE_HOME='+str(state/'cache')),
+        'TMP_ENV': unit_quote('TMPDIR='+str(state/'scratch')),
+        'STATE': unit_quote(state),
+        'LOG': str(state/'log/comfy.log').replace('%', '%%'),
+    }
+    rendered = (ROOT/'systemd'/UNIT).read_text()
+    return re.sub(r'@([A-Z_]+)@', lambda match: values[match[1]], rendered)
 
 
 def private(directory):
@@ -41,19 +66,19 @@ def main():
     os.umask(0o077)
     # Read-only owner controller/queue preflight BEFORE any unit installation.
     subprocess.run([sys.executable, str(ROOT/'scripts/rollout-owner.py'), '--check-only'], check=True)
-    # This reviewed checkout is staged by the authorized SSH developer jorden.
-    # It is not an untrusted plugin path; permit that explicit owner, never
-    # group/world-writable sources or arbitrary third-party owners.
-    trusted_source_uids = (0, os.getuid(), pwd.getpwnam('jorden').pw_uid)
+    # Staging-account trust is explicit; writable/foreign sources stay rejected.
+    trusted_owners = trusted_source_uids()
     for path in [ROOT, *ROOT.parents]:
         meta = path.lstat()
-        if stat.S_ISLNK(meta.st_mode) or meta.st_mode & 0o022 or meta.st_uid not in trusted_source_uids:
+        if stat.S_ISLNK(meta.st_mode) or meta.st_mode & 0o022 or meta.st_uid not in trusted_owners:
             raise RuntimeError('Unsafe source ancestor; no permissions changed: '+str(path))
-    source = ROOT/'systemd'/UNIT
-    subprocess.run(['systemd-analyze','--user','verify',str(source)], check=True)
+    rendered = render_unit()
     state = Path.home()/'.local/state/weather-horde-comfy'
     for directory in [state]+[state/name for name in ('output','input','user','scratch','cache','log')]: private(directory)
     backup = Path(tempfile.mkdtemp(prefix='service-install-', dir=state))
+    source = backup/UNIT
+    source.write_text(rendered)
+    subprocess.run(['systemd-analyze','--user','verify',str(source)], check=True)
     destination = Path.home()/'.config/systemd/user'/UNIT
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     for directory in [destination.parent,*destination.parent.parents]:

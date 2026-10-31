@@ -11,6 +11,7 @@ from urllib.request import Request, build_opener, ProxyHandler
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
+from portable_paths import data_home
 from comfy_preview import ComfyTransport, build_workflow
 
 
@@ -59,7 +60,7 @@ def main():
             finally:
                 process.terminate()
                 process.communicate(timeout=20)
-    installed = Path('/home/troyborg/.local/share/plasma/plasmoids/org.troyborg.weatherhorde')
+    installed = (data_home()/'plasma/plasmoids/org.troyborg.weatherhorde')
     source = REPO/'plasma-widget/org.troyborg.weatherhorde'
     matches = all((installed/p.relative_to(source)).read_bytes() == p.read_bytes() for p in source.rglob('*') if p.is_file())
     queue_after = transport.request('/queue')

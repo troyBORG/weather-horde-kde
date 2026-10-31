@@ -19,6 +19,6 @@ class DiagnosticTests(unittest.TestCase):
 
     def test_wrong_owner_stops_before_private_access(self):
         m=self.load()
-        with patch.object(m.pwd,'getpwuid') as user:
-            user.return_value.pw_name='jorden'
-            with self.assertRaisesRegex(RuntimeError,'troyborg'): m.require_owner()
+        with patch.dict('os.environ', {'WEATHER_HORDE_OWNER':'fixture-owner'}), patch.object(m.pwd,'getpwnam') as user:
+            user.return_value.pw_uid=-1
+            with self.assertRaisesRegex(RuntimeError,'owner'): m.require_owner()

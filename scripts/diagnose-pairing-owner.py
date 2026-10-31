@@ -2,13 +2,15 @@
 """Read-only pairing metadata; never opens or prints a token or calls services."""
 import os
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from portable_paths import require_owner as require_configured_owner
 import pwd
 import stat
 import json
 
 def main():
-    if pwd.getpwuid(os.getuid()).pw_name != 'troyborg':
-        raise SystemExit('Run only in the troyborg owner terminal; no token will be read.')
+    require_configured_owner()
     state=Path(os.environ.get('XDG_STATE_HOME') or str(Path.home()/'.local/state'))
     print('Owner terminal XDG_STATE_HOME:', str(state))
     print('Metadata only; no token contents or service requests.')

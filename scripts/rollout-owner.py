@@ -9,11 +9,11 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import sys
 import pwd
 import shutil
 import stat
 import subprocess
-import sys
 import tempfile
 import time
 from urllib.request import Request, build_opener, ProxyHandler
@@ -21,6 +21,7 @@ from urllib.error import HTTPError, URLError
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
+from portable_paths import require_owner as require_configured_owner, comfy_root
 from displays import discover
 from safety import collect
 from comfy_preview import ComfyTransport
@@ -31,8 +32,7 @@ PACKAGE='org.troyborg.weatherhorde'
 
 
 def require_owner():
-    if pwd.getpwuid(os.getuid()).pw_name!='troyborg':
-        raise RuntimeError('Run in the troyborg KDE owner terminal; SSH jorden cannot restart or authenticate this service')
+    require_configured_owner()
     displays,error=discover()
     if error or not displays: raise RuntimeError('Owner graphical environment required: '+error)
     return displays
@@ -172,7 +172,8 @@ print('Previous package restored. Token/settings/wallpaper not changed.')
     launch=['systemd-run','--user','--collect','--unit=weather-horde-kde',
         '--property=Type=exec','--property=Restart=on-failure','--property=UMask=0077',
         '--property=NoNewPrivileges=yes','--property=PartOf=graphical-session.target','--working-directory='+str(ROOT)]
-    for key in ('XDG_RUNTIME_DIR','XDG_SESSION_TYPE','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','XDG_CURRENT_DESKTOP'):
+    launch.append('--setenv=WEATHER_HORDE_COMFY_ROOT='+str(comfy_root()))
+    for key in ('WEATHER_HORDE_OWNER','XDG_RUNTIME_DIR','XDG_SESSION_TYPE','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','XDG_CURRENT_DESKTOP'):
         if key in os.environ: launch.append('--setenv='+key+'='+os.environ[key])
     launch+=['/usr/bin/python3',str(ROOT/'weather_controller.py'),'--state-dir',str(state),'--automation-off']
     if checkpoint: launch+=['--preview-checkpoint',checkpoint]

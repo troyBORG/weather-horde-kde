@@ -25,15 +25,17 @@ class OwnerConnectionTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 3, stdout='inactive\n')
             raise LaunchReached()
         with tempfile.TemporaryDirectory() as tmp, \
-             patch.object(owner.pwd, 'getpwuid', return_value=types.SimpleNamespace(pw_name='troyborg')), \
+             patch.object(owner, 'require_configured_owner'), \
              patch.object(owner, 'discover', return_value=([{'id':'TEST','width':1920,'height':1080,'scale':1}], '')), \
              patch.object(owner, 'ComfyTransport', side_effect=AssertionError('Pairing must not depend on ComfyUI')), \
              patch.object(owner.Path, 'home', return_value=Path(tmp)), \
              patch.object(owner.socket, 'socket'), \
              patch.object(owner.subprocess, 'run', side_effect=run), \
+             patch.dict(owner.os.environ, {'WEATHER_HORDE_COMFY_ROOT':'', 'XDG_DATA_HOME':tmp}), \
              patch.object(owner.sys, 'argv', ['connect-owner.py']):
             with self.assertRaises(LaunchReached):
                 owner.main()
+        self.assertIn('--setenv=WEATHER_HORDE_COMFY_ROOT='+str(Path(tmp)/'ComfyUI'), commands[-1])
         self.assertNotIn('--preview-checkpoint', commands[-1])
         self.assertIn('--automation-off', commands[-1])
 
@@ -65,7 +67,7 @@ class OwnerConnectionTests(unittest.TestCase):
             root.mkdir(parents=True, mode=0o700)
             (root/'token').write_text('x'*40)
             (root/'token').chmod(0o600)
-            with patch.object(owner.pwd, 'getpwuid', return_value=types.SimpleNamespace(pw_name='troyborg')), \
+            with patch.object(owner, 'require_configured_owner'), \
                  patch.object(owner, 'discover', return_value=([{'id':'TEST','width':1920,'height':1080,'scale':1}], '')), \
                  patch.object(owner.Path, 'home', return_value=Path(tmp)), \
                  patch.object(owner, 'build_opener', return_value=opener), \
@@ -78,7 +80,8 @@ class OwnerConnectionTests(unittest.TestCase):
             self.assertEqual(len([c for c in commands if c[0]=='wl-copy']), 1 if manual else 0)
 
     def test_non_owner_refused_before_discovery(self):
-        with patch.object(owner.pwd, 'getpwuid', return_value=types.SimpleNamespace(pw_name='jorden')), \
+        with patch.dict('os.environ', {'WEATHER_HORDE_OWNER':'fixture-owner'}), \
+             patch.object(owner.pwd, 'getpwnam', return_value=types.SimpleNamespace(pw_uid=-1)), \
              patch.object(owner, 'discover') as discover, \
              patch.object(owner.sys, 'argv', ['connect-owner.py']):
             with self.assertRaisesRegex(RuntimeError, 'graphical terminal'):

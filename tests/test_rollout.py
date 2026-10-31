@@ -10,8 +10,8 @@ class RolloutTests(unittest.TestCase):
         m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
     def test_refuses_cross_uid_before_any_action(self):
         m=self.module()
-        with patch.object(m.os,'getuid',return_value=1001), patch.object(m.pwd,'getpwuid') as user, patch.object(m.subprocess,'run') as run:
-            user.return_value.pw_name='jorden'
+        with patch.object(m.os,'getuid',return_value=1001), patch.dict('os.environ', {'WEATHER_HORDE_OWNER':'fixture-owner'}), patch.object(m.pwd,'getpwnam') as user, patch.object(m.subprocess,'run') as run:
+            user.return_value.pw_uid=-1
             with self.assertRaisesRegex(RuntimeError,'owner'): m.require_owner()
             run.assert_not_called()
     def test_idle_preflight_rejects_busy_and_uncertain_states(self):

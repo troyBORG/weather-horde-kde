@@ -7,9 +7,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from portable_paths import require_owner as require_configured_owner
 import pwd
 import subprocess
-import sys
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,8 +37,7 @@ def verify_release():
     return archive
 
 def install(reload=False):
-    if pwd.getpwuid(os.getuid()).pw_name != 'troyborg':
-        raise RuntimeError('Run in the troyborg KDE owner terminal, not an SSH account')
+    require_configured_owner()
     if os.environ.get('XDG_SESSION_TYPE') not in ('wayland','x11') or not os.environ.get('DBUS_SESSION_BUS_ADDRESS'):
         raise RuntimeError('A real KDE owner graphical session is required')
     archive=verify_release()

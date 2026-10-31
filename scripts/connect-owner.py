@@ -6,16 +6,17 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sys
 import pwd
 import socket
 import subprocess
-import sys
 import time
 from urllib.request import Request, build_opener, ProxyHandler
 
-REPO = Path('/home/troyborg/projects/weather-horde-kde')
+REPO = Path(__file__).resolve().parents[1]
 CHECKPOINT = 'natvisNaturalVision_v27.safetensors'
 sys.path.insert(0, str(REPO))
+from portable_paths import require_owner as require_configured_owner, comfy_root
 from displays import discover
 from comfy_preview import ComfyTransport, build_workflow
 
@@ -27,8 +28,7 @@ def main():
     parser.add_argument('--manual-pairing', action='store_true',
                         help='Explicit fallback: copy token locally for older widgets')
     args = parser.parse_args()
-    if pwd.getpwuid(os.getuid()).pw_name != 'troyborg':
-        raise RuntimeError('Run this command in troyborg\'s KDE graphical terminal, not SSH as jorden.')
+    require_configured_owner()
     displays, error = discover()
     if error or not displays:
         raise RuntimeError('No live owner-session outputs: ' + (error or 'no active outputs'))
@@ -66,7 +66,8 @@ def main():
                '--property=Type=exec','--property=Restart=on-failure','--property=RestartSec=10',
                '--property=NoNewPrivileges=yes','--property=UMask=0077',
                '--property=PartOf=graphical-session.target','--working-directory='+str(REPO)]
-    for name in ('XDG_RUNTIME_DIR','XDG_SESSION_TYPE','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','XDG_CURRENT_DESKTOP'):
+    command.append('--setenv=WEATHER_HORDE_COMFY_ROOT='+str(comfy_root()))
+    for name in ('WEATHER_HORDE_OWNER','XDG_RUNTIME_DIR','XDG_SESSION_TYPE','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','XDG_CURRENT_DESKTOP'):
         if name in os.environ:
             command.append('--setenv='+name+'='+os.environ[name])
     command += ['/usr/bin/python3',str(REPO/'weather_controller.py'),'--state-dir',str(root),

@@ -1,8 +1,20 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
+from unittest.mock import patch
 
 class ComfyOwnerHandoffTests(unittest.TestCase):
+    def setUp(self):
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        self.root = Path(directory)
+        (self.root/'.venv/bin').mkdir(parents=True)
+        for name in ('main.py', '.venv/bin/python', 'extra_model_paths.yaml'):
+            (self.root/name).write_text('# fixture')
+        (self.root/'.venv/bin/python').chmod(0o700)
+        self.enterContext(patch.dict('os.environ', WEATHER_HORDE_COMFY_ROOT=directory,
+                                    WEATHER_HORDE_OWNER='fixture-owner'))
+
     def test_launch_requires_owner_and_unoccupied_port(self):
         path=Path(__file__).resolve().parents[1]/'scripts/comfy-owner.py'
         self.assertTrue(path.exists(), 'Owner helper missing')

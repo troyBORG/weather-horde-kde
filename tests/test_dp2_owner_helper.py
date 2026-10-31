@@ -12,8 +12,8 @@ class OwnerHelperTests(unittest.TestCase):
         self.assertEqual(m.differences(a,b),['/settings/0/values/FillMode'])
     def test_wrong_owner_stops(self):
         m=self.load()
-        with patch.object(m.pwd,'getpwuid') as user:
-            user.return_value.pw_name='jorden'
+        with patch.dict('os.environ', {'WEATHER_HORDE_OWNER':'fixture-owner'}), patch.object(m.pwd,'getpwnam') as user:
+            user.return_value.pw_uid=-1
             with self.assertRaisesRegex(RuntimeError,'owner'): m.require_owner()
     def test_live_listener_refuses_reconcile(self):
         m=self.load()

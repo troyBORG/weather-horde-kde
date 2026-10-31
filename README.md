@@ -2,7 +2,7 @@
 
 A KDE Plasma 6 widget and authenticated loopback controller for weather-aware wallpaper previews using local ComfyUI. The source snapshot reports version **0.1.10**; that is not a Git release tag or proof of a loaded deployment.
 
-**Preparation candidate, not a portable public release.** Owner-account checks, model installation paths and geographic defaults remain site-specific. Read [deployment](docs/deployment.md), [security](SECURITY.md), and [licensing status](docs/licensing.md) before installation or redistribution. No project-wide license grant has been invented.
+**Experimental source release.** Owner and Comfy installation paths are explicit configuration; geographic defaults and some legacy recovery targets remain site-specific. Read [deployment](docs/deployment.md), [security](SECURITY.md), and [licensing status](docs/licensing.md) before installation or redistribution. No project-wide license grant has been invented.
 
 ## What it does
 
@@ -38,7 +38,7 @@ Build and verify the widget first. The existing owner-only widget helper support
 
 The API binds to loopback and requires the owner-private bearer token. Do not expose it through a reverse proxy, borrow another user's bus/token, attach private state to an issue, or run owner helpers as root. Weather/location lookup uses external providers (Open-Meteo and Zippopotam.us); rendering is local. This is not an entirely offline application.
 
-Recovery receipts, owner settings/tokens, generated wallpapers, desktop screenshots, logs, release archives and original Git/index material are excluded from this source candidate. Site-specific source constants are still disclosed by the code; private publication is not permission to expose them publicly. Portability changes require their own reviewed tests rather than blanket identifier replacement.
+Recovery receipts, owner settings/tokens, generated wallpapers, desktop screenshots, logs, release archives and original Git/index material are excluded from this source candidate. Installation paths no longer assume a particular home directory, mount or account. Configure the intended owner and reviewed Comfy installation before using owner helpers; see [path configuration](docs/deployment.md#portable-path-and-owner-configuration). Product IDs and security-sensitive system paths are not installation placeholders.
 
 ## Development and provenance
 

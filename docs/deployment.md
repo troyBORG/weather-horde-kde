@@ -1,6 +1,25 @@
 # Persistent controller deployment
 
-This is the current supported approach for the existing site-specific installation, not a generic installer for arbitrary accounts. Source still enforces its original graphical-owner and trusted-staging-account policy and fixed Comfy/model paths. Do not weaken those checks merely to make installation succeed elsewhere.
+Installation is still a deliberate graphical-owner action, not an unattended generic installer. Account and installation paths are configurable without removing same-UID, private-state, trusted-source, listener or graphical-session checks.
+
+## Portable path and owner configuration
+
+Run from your reviewed checkout in the intended owner's KDE terminal:
+
+```sh
+export WEATHER_HORDE_OWNER="$(id -un)"
+export WEATHER_HORDE_COMFY_ROOT="$HOME/.local/share/ComfyUI"
+```
+
+`WEATHER_HORDE_OWNER` is required by owner helpers and resolved through the system account database. Missing/unknown owners, root and a caller with a different UID are rejected before owner actions. This is explicit deployment selection, not authentication or permission to borrow another account's bus/token. Existing session/display/private-file checks still apply.
+
+`WEATHER_HORDE_COMFY_ROOT` defaults to `${XDG_DATA_HOME:-$HOME/.local/share}/ComfyUI`. Set it to the actual reviewed Comfy checkout (not its parent). Values must be absolute, without parent traversal, surrounding whitespace or control characters. Identity checks, model discovery and the launcher share this exact path. The installation must contain `main.py`, `.venv/bin/python`, and `extra_model_paths.yaml`; configure external model libraries in that YAML rather than editing Weather Horde. No model directory, permissions, virtual environment or checkpoint is created/downloaded by this change.
+
+Source paths are discovered from the scripts' own checkout, not the current directory or a fixed `~/projects` layout. By default, source ancestors must be owned by root or the caller, and cannot be group/world writable or symlinks. Only when intentionally trusting a separate source-staging account, set `WEATHER_HORDE_STAGING_USER` to that account's name. No staging account is implicitly trusted.
+
+Generated Comfy and persistent controller units capture the selected Comfy root; the Comfy unit also captures the configured owner. Re-run the appropriate installer in a stopped/idle maintenance window to change an installed path. Shell exports alone do not update an already installed unit. The checked-in systemd files are templates/examples, not directly installable units. The Comfy installer renders and syntax-checks its actual unit before installing, retaining `ProtectSystem=strict`, private writable state and no login enablement.
+
+For compatibility, owner installers still use the invoking owner's `~/.config/systemd/user` and `~/.local/state/weather-horde-{kde,comfy}`. This patch does not migrate existing state or provide custom-XDG-state deployment support; keep Plasma/controller state configuration consistent. Package lookup follows absolute `XDG_DATA_HOME` (or `~/.local/share`). `/proc`, `/usr/bin/python3`, packaged application identity paths and the stable `org.troyborg.weatherhorde` ID are intentional, not personal installation paths. Legacy DP-2 recovery tools and location defaults are outside this path-only change.
 
 ## Stopped-controller owner installation
 
