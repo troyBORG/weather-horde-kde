@@ -55,6 +55,14 @@ class WallpaperManager:
         if not self.journal.exists(): return []
         return list(json.loads(self.journal.read_text()))
 
+    def preflight(self, display):
+        """Read-only eligibility; apply still repeats every transaction guard."""
+        journal=json.loads(self.journal.read_text()) if self.journal.exists() else {}
+        if journal.get(display['id'],{}).get('state')=='pending':
+            raise ValueError('Unreconciled wallpaper transaction; use Restore previous first')
+        if not self.backend.snapshot(display).get('plugin'):
+            raise ValueError('Original wallpaper plugin unavailable')
+
     def apply(self, display, identifier, guard):
         if not isinstance(identifier,str) or not re.fullmatch('[0-9a-f]{32}',identifier):
             raise ValueError('Select a validated preview')

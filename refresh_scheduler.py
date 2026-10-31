@@ -23,6 +23,7 @@ class RefreshScheduler:
         self.retry_at = 0
         self.failures = 0
         self.blocker = 'activity_unknown'
+        self.permanent_error = ''
 
     def configure(self, enabled, mode, targets, interval):
         changed = self.mode != mode or self.targets != set(targets)
@@ -61,7 +62,7 @@ class RefreshScheduler:
 
     def next_action(self, now_utc, monotonic_now):
         if (not self.enabled or not self.pending or self.active or
-                monotonic_now < self.retry_at or self.safe_since is None or
+                self.permanent_error or monotonic_now < self.retry_at or self.safe_since is None or
                 self.last_observed is None or not 0 <= monotonic_now-self.last_observed <= self.observation_ttl or
                 monotonic_now-self.safe_since < self.grace):
             return None
@@ -83,15 +84,17 @@ class RefreshScheduler:
         self.active = None
         self.failures += 1
         self.retry_at = monotonic_now + (60, 300, 900)[min(self.failures-1, 2)] if retryable else math.inf
-        self.blocker = reason
+        if retryable: self.blocker = reason
+        else: self.permanent_error = reason
         self.request('retry', self.pending)
 
     def status(self, monotonic_now):
         stale = self.last_observed is None or not 0 <= monotonic_now-self.last_observed <= self.observation_ttl
         return {'pending': sorted(self.pending),
                 'reasons': sorted(set().union(*self.pending.values())) if self.pending else [],
-                'waiting_reason': 'activity_unknown' if stale else self.blocker or ('settling' if self.safe_since is not None and monotonic_now-self.safe_since < self.grace else 'ready'),
+                'waiting_reason': self.permanent_error or ('activity_unknown' if stale else self.blocker or ('settling' if self.safe_since is not None and monotonic_now-self.safe_since < self.grace else 'ready')),
+                'activity_reason': 'activity_unknown' if stale else self.blocker,
                 'settling_seconds': math.ceil(max(0, self.grace - (monotonic_now-self.safe_since))) if self.safe_since is not None else self.grace,
                 'retry_seconds': math.ceil(max(0, self.retry_at-monotonic_now)) if math.isfinite(self.retry_at) else None,
-                'action_required': not math.isfinite(self.retry_at),
+                'action_required': bool(self.permanent_error),
                 'last_success': self.success, 'active': self.active}

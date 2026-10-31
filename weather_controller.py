@@ -108,6 +108,10 @@ class Controller:
         try:
             saved = json.loads((self.root/'refresh-state.json').read_text())
             self.scheduler.success = saved.get('success', {})
+            self.scheduler.permanent_error = saved.get('permanent_error', '')
+            if self.scheduler.permanent_error:
+                self.scheduler.fail(self.scheduler.permanent_error, retryable=False)
+                self.last_error = self.scheduler.permanent_error
         except (OSError, ValueError):
             pass
         # Published preview receipts also survive a crash before scheduler save.
@@ -392,7 +396,15 @@ class Controller:
                                     daypart = solar_daypart(solar_elevation(instant, location['latitude'], location['longitude']))
                                     if not result_fresh(scene, instant, self.settings['interval_minutes']*60, daypart):
                                         raise ValueError('Stale scene: fresh weather/daypart render required')
-                                applied = self.wallpaper.apply(target, result["id"], guard)
+                                try:
+                                    applied = self.wallpaper.apply(target, result["id"], guard)
+                                except Exception as error:
+                                    if refresh_id:
+                                        with self.lock:
+                                            if self.scheduler.active and self.scheduler.active['generation_id'] == refresh_id:
+                                                self.scheduler.fail(str(error), retryable=False)
+                                                self.save_refresh()
+                                    raise
                                 with self.lock: self.wallpaper_action = applied
                                 if refresh_id and applied.get('verified') is True:
                                     self.refresh_complete(target['id'], refresh_id, applied.get('applied_at'))
@@ -482,13 +494,34 @@ class Controller:
     def save_refresh(self):
         from wallpaper import atomic_json
         atomic_json(self.root/'refresh-state.json', {'success': self.scheduler.success,
-                    'pending': {k: sorted(v) for k, v in self.scheduler.pending.items()}})
+                    'pending': {k: sorted(v) for k, v in self.scheduler.pending.items()},
+                    'permanent_error': self.scheduler.permanent_error})
 
     def refresh_complete(self, target, generation_id, at=None):
         with self.lock:
             if self.scheduler.complete(target, generation_id, time.time() if at is None else at):
                 self.refresh_event('apply_verified' if self.scheduler.mode == 'image_wallpaper' else 'preview_complete', generation_id=generation_id, target=target, mode=self.scheduler.mode)
                 self.save_refresh()
+
+    def reconcile_refresh(self, verified_restore=False):
+        """Explicit read-only configuration check; never called by the timer."""
+        if (self.render_lock.locked() and not verified_restore) or (self.root/'inflight.json').exists():
+            raise ValueError('Wait for or reconcile the outstanding render')
+        mode = self.settings['automation_kind']
+        if not self.settings.get('location') or (mode != 'prompt_preview' and not self.checkpoint):
+            raise ValueError('configuration_required')
+        if mode != 'prompt_preview':
+            targets = self.target_displays({'target':self.settings['automation_target']})
+            if not targets: raise ValueError('No live targets')
+            if self.model_gate() != 'safe': raise ValueError(self.model_gate())
+            if mode == 'image_wallpaper':
+                if self.wallpaper is None: raise ValueError('Wallpaper adapter not configured')
+                for display in targets: self.wallpaper.preflight(display)
+        self.scheduler.permanent_error = ''
+        self.scheduler.retry_at = self.scheduler.failures = 0
+        self.scheduler.safe_since = self.scheduler.last_observed = None
+        self.last_error = ''
+        self.save_refresh()
 
     def automatic_session_guard(self):
         if not self.settings['automation_enabled'] or self.override_status()['active']:
@@ -527,9 +560,20 @@ class Controller:
         self.refresh_event('job_requested', generation_id=action['generation_id'], targets=action['targets'], mode=action['mode'])
         try:
             if not self.settings.get('location') or (action['mode'] != 'prompt_preview' and not self.checkpoint) or (action['mode'] == 'image_wallpaper' and self.wallpaper is None):
-                s.fail('configuration_required', retryable=False, monotonic_now=monotonic_now)
+                self.last_error = 'configuration_required'
+                self.state = 'failed'
+                s.fail(self.last_error, retryable=False, monotonic_now=monotonic_now)
                 self.save_refresh()
                 return
+            if action['mode'] == 'image_wallpaper':
+                try:
+                    for display in self.displays:
+                        if display['id'] in action['targets']: self.wallpaper.preflight(display)
+                except (ValueError, OSError) as error:
+                    self.state, self.last_error = 'failed', str(error)
+                    s.fail(self.last_error, retryable=False, monotonic_now=monotonic_now)
+                    self.save_refresh()
+                    return
             if action['mode'] == 'prompt_preview':
                 self.build_preview({'target': selected})
                 self.refresh_complete('prompt', action['generation_id'])
@@ -576,6 +620,11 @@ class Controller:
     def dispatch(self, method, path, body, scheduled=False):
         with self.lock:
             if method == 'GET' and path == '/v1/status': return self.status()
+            if method == 'POST' and path == '/v1/refresh/reconcile':
+                if body != {'confirmation':'Reconcile automatic refresh'}:
+                    raise ValueError('Explicit refresh reconciliation confirmation required')
+                self.reconcile_refresh()
+                return self.status()
             if method == 'POST' and path == '/v1/models/refresh':
                 if self.render_lock.locked(): raise ValueError('Wait for current preview')
                 self.refresh_models()
@@ -686,10 +735,14 @@ class Controller:
                             successes[targets[0]['id']] = result['applied_at']
                         elif path == '/v1/restore':
                             successes.pop(targets[0]['id'], None)
+                            # Restore owns the render lock; validate all remaining
+                            # configuration/receipts before releasing a durable latch.
+                            try: self.reconcile_refresh(verified_restore=True)
+                            except (ValueError, OSError): pass
                         self.save_refresh()
                     self.state = result['state']
                     self.wallpaper_action = result
-                    self.last_error = ''
+                    self.last_error = self.scheduler.permanent_error
                     return result
                 except Exception as error:
                     self.last_error = str(error)

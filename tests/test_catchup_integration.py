@@ -121,12 +121,104 @@ class CatchupIntegrationTests(unittest.TestCase):
             self.assertEqual(policy(),'game_active')
             self.assertIsNone(c.scheduler.safe_since)
 
+    @patch('weather_controller.weather_preview', return_value={'positive':'fixture','negative':'fixture'})
+    def test_pending_transaction_blocks_before_submission_and_stays_latched(self, _):
+        import json
+        from pathlib import Path
+        from wallpaper import WallpaperManager
+        from test_wallpaper import Backend
+        with tempfile.TemporaryDirectory() as d:
+            c = self.make(d)
+            c.settings['automation_kind'] = 'image_wallpaper'
+            c.wallpaper = WallpaperManager(d, Backend())
+            (Path(d)/'wallpaper-restore.json').write_text(json.dumps({'TEST':{'state':'pending'}}))
+            c.transport.queue = Mock(wraps=c.transport.queue)
+            for n in range(0, 61, 10): c.tick(now=5000, monotonic_now=n)
+            if c.render_thread: c.render_thread.join(3)
+            self.assertEqual(c.transport.queue.call_count, 0)
+            self.assertTrue(c.status()['refresh']['action_required'])
+            self.assertIn('Unreconciled', c.last_error)
+            for n in range(70, 3001, 10):
+                c.guard['observed_at'] = time.time()
+                c.tick(now=5000+n, monotonic_now=n)
+            self.assertEqual(c.transport.queue.call_count, 0)
+            restarted = self.make(d)
+            self.assertTrue(restarted.status()['refresh']['action_required'])
+
+    @patch('weather_controller.weather_preview', return_value={'positive':'fixture','negative':'fixture'})
+    @patch('refresh_freshness.result_fresh', return_value=True)
+    def test_apply_failure_latches_until_explicit_verified_reconciliation(self, *_):
+        from wallpaper import WallpaperManager
+        from test_wallpaper import Backend
+        with tempfile.TemporaryDirectory() as d:
+            c = self.make(d)
+            c.settings['location'].update(latitude=40, longitude=-90)
+            c.settings['automation_kind'] = 'image_wallpaper'
+            backend = Backend()
+            c.wallpaper = WallpaperManager(d, backend)
+            backend.replace = Mock(side_effect=ValueError('Permanent apply failure'))
+            for n in range(0, 61, 10): c.tick(now=5000, monotonic_now=n)
+            c.render_thread.join(3)
+            self.assertTrue(c.status()['refresh']['action_required'])
+            self.assertIn('Permanent apply failure', c.status()['refresh']['waiting_reason'])
+            # An unrelated settings edit is not recovery, nor is a failed check.
+            c.dispatch('PUT', '/v1/settings', {'interval_minutes':30})
+            with self.assertRaises(ValueError):
+                c.dispatch('POST', '/v1/refresh/reconcile', {'confirmation':'Reconcile automatic refresh'})
+            self.assertTrue(c.status()['refresh']['action_required'])
+            # Restore verifies the original snapshot and retires the pending receipt.
+            result = c.dispatch('POST', '/v1/restore', {'target':'TEST','confirmation':'Restore previous wallpaper'})
+            self.assertTrue(result['verified'])
+            self.assertFalse(c.status()['refresh']['action_required'])
+
+    @patch('weather_controller.weather_preview', return_value={'positive':'fixture','negative':'fixture'})
+    @patch('refresh_freshness.result_fresh', return_value=True)
+    def test_cancelled_apply_failure_cannot_latch_new_intent(self, *_):
+        from wallpaper import WallpaperManager
+        from test_wallpaper import Backend
+        with tempfile.TemporaryDirectory() as d:
+            c = self.make(d)
+            c.settings['location'].update(latitude=40, longitude=-90)
+            c.settings['automation_kind'] = 'image_wallpaper'
+            backend = Backend()
+            c.wallpaper = WallpaperManager(d, backend)
+            def cancelled(*args):
+                c.dispatch('PUT', '/v1/settings', {'automation_enabled':False})
+                raise ValueError('Cancelled apply')
+            backend.replace = cancelled
+            for n in range(0, 61, 10): c.tick(now=5000, monotonic_now=n)
+            c.render_thread.join(3)
+            self.assertFalse(c.status()['refresh']['action_required'])
+
+    def test_verified_restore_does_not_clear_unfixed_configuration(self):
+        import json
+        from pathlib import Path
+        from wallpaper import WallpaperManager
+        from test_wallpaper import Backend
+        with tempfile.TemporaryDirectory() as d:
+            c = self.make(d)
+            backend = Backend()
+            c.wallpaper = WallpaperManager(d, backend)
+            c.settings.update(automation_kind='image_wallpaper', location=None)
+            c.scheduler.fail('configuration_required', retryable=False)
+            (Path(d)/'wallpaper-restore.json').write_text(json.dumps({'TEST':{
+                'state':'pending', 'before':backend.value, 'after':backend.value}}))
+            c.dispatch('POST', '/v1/restore', {'target':'TEST','confirmation':'Restore previous wallpaper'})
+            self.assertTrue(c.status()['refresh']['action_required'])
+
     def test_missing_location_is_actionable_not_retry_loop(self):
         with tempfile.TemporaryDirectory() as d:
             c = self.make(d)
             c.settings['location'] = None
             for n in range(0,61,10): c.tick(now=5000, monotonic_now=n)
             self.assertTrue(c.status()['refresh']['action_required'])
+            self.assertEqual(c.last_error, 'configuration_required')
+            for n in range(70, 131, 10): c.tick(now=5000, monotonic_now=n)
+            self.assertEqual(c.status()['refresh']['waiting_reason'], 'configuration_required')
+            c.settings['location'] = {'town':'fixture'}
+            c.dispatch('POST', '/v1/refresh/reconcile', {'confirmation':'Reconcile automatic refresh'})
+            self.assertFalse(c.status()['refresh']['action_required'])
+            self.assertIsNone(c.scheduler.safe_since)
             self.assertIsNone(c.render_thread)
 
     def test_private_audit_is_bounded_and_success_correlated(self):

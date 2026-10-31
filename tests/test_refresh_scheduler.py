@@ -47,6 +47,20 @@ class RefreshSchedulerTests(unittest.TestCase):
         s.reconcile(10001,'startup')
         self.assertEqual(set(s.pending), {'A'})
 
+    def test_permanent_reason_survives_safe_observations_and_reconfiguration(self):
+        s = self.ready()
+        s.fail('configuration_required', False, 0)
+        self.assertEqual(s.status(60)['activity_reason'], '')
+        for n in range(0, 61, 10): s.observe_activity(True, True, n)
+        self.assertEqual(s.status(60)['waiting_reason'], 'configuration_required')
+        self.assertTrue(s.status(60)['action_required'])
+        s.configure(False, 'image_preview', [], 1800)
+        s.configure(True, 'image_preview', ['A'], 1800)
+        s.reconcile(10000)
+        self.assertTrue(s.status(6000)['action_required'])
+        self.assertEqual(s.status(6000)['waiting_reason'], 'configuration_required')
+        self.assertIsNone(s.next_action(10000, 60))
+
     def test_stale_observation_status_never_says_ready(self):
         s = self.ready()
         self.assertEqual(s.status(6000)['waiting_reason'], 'activity_unknown')

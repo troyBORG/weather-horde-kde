@@ -1,5 +1,10 @@
 # Catch-up refresh — feature branch, runtime unverified
 
+The original `8dd1c280` rollout is withdrawn: independent review found repeated
+GPU retries on pending wallpaper transactions and overwritten permanent status.
+Use only the revised reviewed artifact; owner installation remains blocked on
+independent re-review and the acceptance gates below.
+
 ## Behavior and consent
 
 `catch_up_refresh` is an explicit boolean setting (default **false**). The widget's
@@ -26,8 +31,18 @@ When opted in and Auto is on:
   invalidate current automatic intent; subsequent ticks reconcile the new policy.
 * Transient/incomplete work backs off for 1, 5, then at most 15 minutes. Missing
   location/renderer/apply capability requires configuration correction; unresolved
-  submission journals remain blocked, not resubmitted. Change settings after
-  correcting configuration to clear the action-required latch.
+  submission journals remain blocked, not resubmitted. Selected wallpaper receipts
+  and live mapping/plugin eligibility are preflighted before generation. Pending
+  transactions and apply failures latch an actionable error durably across restarts;
+  timer observations, Auto toggles and ordinary settings edits cannot clear it.
+  After correcting configuration or completing owner receipt recovery, explicitly
+  POST `/v1/refresh/reconcile` with
+  `{"confirmation":"Reconcile automatic refresh"}` through the authenticated local
+  API. This performs read-only preflight, refuses unresolved jobs and restarts safe
+  grace; it never renders or writes wallpaper. Verified Restore can also release
+  the latch after selected receipts pass preflight. A failed reconciliation leaves
+  the latch intact. `refresh.waiting_reason` retains the permanent error separately
+  from `activity_reason`, and controller `last_error` records the failure.
 * Prompt, generated-preview and verified-wallpaper freshness are separate.
   Wallpaper transactions durably record `applied_at` only after compositor
   readback. Startup reconciles those receipts, including a crash before scheduler
