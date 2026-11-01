@@ -23,6 +23,58 @@ UNIT = 'weather-horde-kde.service'
 ENV_KEYS = ('DISPLAY','WAYLAND_DISPLAY','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS',
             'XDG_SESSION_TYPE','XDG_CURRENT_DESKTOP','XDG_DATA_DIRS','LANG')
 AUTO_KEYS = ('automation_enabled','automation_kind','automation_target','interval_minutes')
+STAGE = 'arguments'
+
+
+def failure_details(exc, stage):
+    """Only fixed labels and numeric evidence; never exception text/paths/argv."""
+    kinds = (PermissionError, FileNotFoundError, FileExistsError, BlockingIOError,
+             OSError, ValueError, RuntimeError, ImportError,
+             subprocess.CalledProcessError, subprocess.TimeoutExpired)
+    kind = next((t.__name__ for t in kinds if isinstance(exc, t)), 'Exception')
+    # Preserve these subclasses before their OSError/ValueError parents.
+    if isinstance(exc, subprocess.CalledProcessError): kind = 'CalledProcessError'
+    if isinstance(exc, subprocess.TimeoutExpired): kind = 'TimeoutExpired'
+    result = {'stage': stage, 'exception': kind}
+    if isinstance(exc, OSError) and isinstance(exc.errno, int): result['errno'] = exc.errno
+    if isinstance(exc, (subprocess.CalledProcessError, subprocess.TimeoutExpired)):
+        cmd = exc.cmd
+        label = 'other'
+        if isinstance(cmd, (list, tuple)):
+            if len(cmd) >= 3 and cmd[:2] == ['systemctl', '--user'] and cmd[2] in {
+                'show', 'is-active', 'is-enabled', 'disable', 'enable', 'daemon-reload', 'import-environment', 'start'}:
+                label = 'systemctl:' + cmd[2]
+            elif cmd[:3] == ['systemd-analyze', '--user', 'verify']: label = 'systemd-analyze:verify'
+            elif cmd == ['kscreen-doctor', '-j']: label = 'kscreen-doctor:json'
+        result['command'] = label
+        if isinstance(exc, subprocess.CalledProcessError): result['returncode'] = exc.returncode
+    frames = []
+    tb = exc.__traceback__
+    while tb:
+        if tb.tb_frame.f_code.co_filename == __file__:
+            frames.append(tb.tb_lineno)
+        tb = tb.tb_next
+    result['installer_lines'] = frames[-5:]
+    return result
+
+
+def readonly_audit(event, args):
+    """Defense in depth for diagnostic CLI; not a sandbox for hostile code."""
+    if event == 'open':
+        mode, flags = args[1:3]
+        if (isinstance(mode, str) and any(c in mode for c in 'wax+')) or (
+            isinstance(flags, int) and flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND)):
+            raise PermissionError('Read-only diagnostic refused a write')
+    if event in {'os.remove', 'os.rename', 'os.mkdir', 'os.rmdir', 'os.chmod', 'os.chown',
+                 'os.symlink', 'os.link', 'os.truncate', 'os.utime', 'os.system',
+                 'socket.connect', 'socket.connect_ex'}:
+        raise PermissionError('Read-only diagnostic refused mutation/network')
+    if event == 'subprocess.Popen':
+        argv = args[1]
+        allowed = isinstance(argv, list) and (
+            (argv[:2] == ['systemctl', '--user'] and len(argv) > 2 and argv[2] in {'show', 'is-active', 'is-enabled'})
+            or argv == ['kscreen-doctor', '-j'])
+        if not allowed: raise PermissionError('Read-only diagnostic refused command')
 
 
 def quote(value):
@@ -185,6 +237,8 @@ def restore_backup(backup, destination, state):
 
 
 def main():
+    global STAGE
+    STAGE = 'arguments'
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--preview-checkpoint')
     parser.add_argument('--manual-wallpapers',action='store_true')
@@ -195,22 +249,34 @@ def main():
     parser.add_argument('--enable-catch-up-refresh',action='store_true',
                         help='Opt in to overdue unlock/game catch-up and locked-session pause; preserve Auto/mode/scope/interval')
     parser.add_argument('--rollback',type=Path,help='Restore one installer backup, only while controller stopped')
+    parser.add_argument('--diagnose-before-backup', action='store_true',
+                        help='Run exact preflight read-only; stop BEFORE backup creation or installation')
     args=parser.parse_args()
+    if args.diagnose_before_backup:
+        if args.rollback: parser.error('Diagnostic mode cannot perform rollback')
+        sys.dont_write_bytecode = True
+        sys.addaudithook(readonly_audit)
+    STAGE = 'configured-owner'
     require_configured_owner()
+    STAGE = 'session'
     os.umask(0o077)
     if not 30<=args.comfy_idle_seconds<=86400: raise ValueError('Invalid Comfy idle timeout')
     if not os.environ.get('WAYLAND_DISPLAY') or os.environ.get('XDG_RUNTIME_DIR')!='/run/user/'+str(os.getuid()):
         raise RuntimeError('Run inside the owner Wayland graphical session')
     if ctl('is-active','graphical-session.target',check=False).stdout.strip()!='active':
         raise RuntimeError('Owner graphical-session.target not active')
+    STAGE = 'trusted-source'
     trusted=trusted_source_uids()
     for path in [*ROOT.glob('*.py'), Path(__file__).resolve()]: safe_path(path,trusted)
     sys.path.insert(0,str(ROOT))
+    STAGE = 'imports'
     from receipt_lock import state_lock
     from weather_controller import SOURCE_REVISION
+    STAGE = 'state-path'
     state=Path.home()/'.local/state/weather-horde-kde'
     safe_path(state,(0,os.getuid()),True)
     if stat.S_IMODE(state.stat().st_mode)!=0o700: raise RuntimeError('State must remain 0700')
+    STAGE = 'unit-path'
     destination=Path.home()/'.config/systemd/user'/UNIT
     safe_path(destination.parent,(0,os.getuid()),True)
     if destination.exists() or destination.is_symlink():
@@ -219,7 +285,9 @@ def main():
     if (destination.parent/(UNIT+'.d')).exists(): raise RuntimeError('Existing service drop-ins require review')
     # Serialize with new controllers/recovery tools; old controllers also excluded
     # by unit/process/listener checks. No forced stop, no Auto pause/reset.
+    STAGE = 'state-lock'
     with state_lock(state,exclusive=True):
+        STAGE = 'stopped-controller'
         require_stopped()
         if args.rollback:
             backup=args.rollback.absolute()
@@ -228,44 +296,62 @@ def main():
             safe_path(backup,(os.getuid(),0),True)
             restore_backup(backup,destination,state)
             return
+        STAGE = 'display-discovery'
         from displays import discover
         displays,error=discover()
         if error or not displays: raise RuntimeError('Owner live display discovery failed')
+        STAGE = 'read-settings'
         raw=private_read(state/'settings.json')
+        STAGE = 'settings-and-command'
         settings=requested_settings(raw,args.restore_30min_generate_apply_all,args.enable_catch_up_refresh)
         if args.restore_30min_generate_apply_all and not args.manual_wallpapers:
             raise ValueError('Explicit Auto restore requires --manual-wallpapers')
         argv=command(args,settings,state)
+        STAGE = 'managed-comfy-load'
         if args.managed_comfy:
             if ctl('show','weather-horde-comfy.service','-p','LoadState','--value').stdout.strip()!='loaded':
                 raise RuntimeError('Install reviewed on-demand Comfy unit first; no Comfy start attempted')
+        STAGE = 'read-token'
         token=private_read(state/'token').decode().strip()
         if not 32<=len(token)<=4096: raise RuntimeError('Invalid private authentication material')
+        STAGE = 'enablement'
         enabled=ctl('is-enabled',UNIT,check=False).stdout.strip()
         if enabled not in ('enabled','disabled','not-found',''): raise RuntimeError('Unexpected existing unit enablement')
+        STAGE = 'backup-create'
+        if args.diagnose_before_backup:
+            print(json.dumps({'stage': STAGE, 'ok': True, 'enablement': enabled,
+                              'stopped_before_write': True,
+                              'note': 'Backup creation permissions, quota and free space NOT tested'}))
+            return
         backup=Path(tempfile.mkdtemp(prefix='controller-install-',dir=state))
+        STAGE = 'backup-write'
         atomic(backup/'settings.json',raw)
         atomic(backup/'manifest.json',json.dumps({'had_unit':destination.exists(),'enabled':enabled=='enabled'}).encode())
         if destination.exists(): atomic(backup/'old-unit.service',destination.read_bytes())
         new=render_unit(argv).encode()
         atomic(backup/UNIT,new)
+        STAGE = 'unit-verify'
         run('systemd-analyze','--user','verify',str(backup/UNIT))
         print('Private rollback backup: '+str(backup),flush=True)
         try:
+            STAGE = 'install-unit-and-settings'
             require_stopped()
             atomic(destination,new)
             if args.restore_30min_generate_apply_all or args.enable_catch_up_refresh:
                 atomic(state/'settings.json',json.dumps(settings,indent=2).encode())
             elif private_read(state/'settings.json')!=raw:
                 raise RuntimeError('Settings changed concurrently')
+            STAGE = 'daemon-reload'
             ctl('daemon-reload')
             p=props()
             if p.get('Transient')!='no' or p.get('FragmentPath')!=str(destination):
                 raise RuntimeError('Persistent definition not loaded; transient race refused')
+            STAGE = 'enable-unit'
             ctl('enable',UNIT)
             link=destination.parent/'graphical-session.target.wants'/UNIT
             if not link.is_symlink() or link.resolve()!=destination or ctl('is-enabled',UNIT).stdout.strip()!='enabled':
                 raise RuntimeError('Graphical target enablement not verified')
+            STAGE = 'import-environment'
             ctl('import-environment',*[k for k in ENV_KEYS if os.environ.get(k)])
             atomic(backup/'launch.json',json.dumps({'argv':argv,'source_revision':SOURCE_REVISION}).encode())
         except Exception:
@@ -274,7 +360,9 @@ def main():
             restore_backup(backup,destination,state)
             raise
     # Release exclusive state lock before service obtains shared runtime lock.
+    STAGE = 'start-unit'
     ctl('start',UNIT)
+    STAGE = 'runtime-verification'
     status=None
     for _ in range(45):
         try:
@@ -293,6 +381,7 @@ def main():
     receipt.update(enabled=True,target='graphical-session.target',managed_comfy=status['comfy_service']['managed'],
                    testing_override=False,guard_decision=status.get('guard',{}).get('decision'),
                    verified='Authenticated backend; enabled target link; NOT UI reconnect or completed render/apply')
+    STAGE = 'receipt-write'
     atomic(backup/'receipt.json',json.dumps(receipt,indent=2).encode())
     print(json.dumps(receipt,indent=2))
     print('Login persistence installed. Saved Auto may run when due (including opted-in catch-up), through existing guards. No forced generation/apply or Plasma restart.')
@@ -301,6 +390,5 @@ if __name__=='__main__':
     try: main()
     except Exception as exc:
         # Never print raw HTTP bodies, credentials, subprocess argv or settings.
-        message=str(exc) if isinstance(exc,(RuntimeError,ValueError)) else 'Inspect owner service status and private backup; no forced restart attempted'
-        print('Controller install stopped: '+message,file=sys.stderr)
+        print('Controller install stopped: '+json.dumps(failure_details(exc, STAGE), sort_keys=True),file=sys.stderr)
         sys.exit(1)
