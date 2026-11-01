@@ -55,7 +55,8 @@ def resolve_calendar(now_utc, location, settings, catalog=None):
     result.update(local_date=local.date().isoformat(),season=season,valid_until_utc=boundary.isoformat())
     events=[]
     subdivision = settings.get('calendar_subdivision') or location.get('subdivision_code','')
-    country = location.get('country_code','')
+    country = 'US' if settings.get('calendar_subdivision')=='IA' else location.get('country_code','')
+    result['jurisdiction_notice'] = ('Explicit Iowa calendar correction; geographic weather location unchanged' if settings.get('calendar_subdivision') else 'Confirmed location jurisdiction' if country else 'Calendar jurisdiction unresolved; re-confirm ZIP or select calendar correction')
     digest='unavailable'
     try:
         catalog=load_catalog() if catalog is None else catalog

@@ -17,6 +17,26 @@ class HolidaySettingsTests(unittest.TestCase):
                 c.tick(100,200)
                 tick.assert_called_once_with(100,200)
 
+    def test_explicit_iowa_calendar_correction_does_not_move_weather(self):
+        from calendar_context import resolve_calendar
+        from datetime import datetime
+        from test_holiday_prompt import LOCATION
+        legacy={k:v for k,v in LOCATION.items() if k not in ('country_code','subdivision_code')}
+        context=resolve_calendar(datetime.fromisoformat('2026-10-31T18:00:00+00:00'),legacy,{'holiday_themes':True,'calendar_subdivision':'IA'})
+        self.assertEqual(context['selected_theme'],'halloween')
+        self.assertIn('ia_youth_honor_day',context['event_ids'])
+        self.assertIn('correction',context['jurisdiction_notice'])
+        self.assertNotIn('country_code',legacy)
+
+    def test_zip_lookup_carries_verified_jurisdiction(self):
+        from scene import resolve_zip
+        def fetch(url):
+            if 'zippopotam' in url: return {'places':[{'latitude':'41.8','longitude':'-90.5','place name':'Fixture','state':'Iowa','state abbreviation':'IA'}]}
+            return {'timezone':'America/Chicago'}
+        loc=resolve_zip('00000',fetch)[0]
+        self.assertEqual(loc.get('country_code'),'US')
+        self.assertEqual(loc.get('subdivision_code'),'IA')
+
     def test_calendar_settings_validated_persisted_without_automation_changes(self):
         with tempfile.TemporaryDirectory() as d:
             c=Controller(d)

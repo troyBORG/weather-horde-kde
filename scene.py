@@ -45,6 +45,9 @@ def resolve_zip(zip_code, fetch=fetch_json):
             raise ValueError('Invalid coordinates')
         loc = {'zip':zip_code, 'town':str(place['place name'])[:100], 'state':str(place['state'])[:100],
                'latitude':lat, 'longitude':lon, 'source':'Zippopotam.us ZIP centroid; Open-Meteo timezone'}
+        loc['country_code'] = 'US'  # endpoint above is explicitly /us/
+        subdivision = place.get('state abbreviation','')
+        loc['subdivision_code'] = subdivision if isinstance(subdivision,str) and re.fullmatch('[A-Z]{2}',subdivision) else ''
         loc['timezone'] = forecast(loc, fetch)['timezone']
         ZoneInfo(loc['timezone'])
         result.append(loc)
