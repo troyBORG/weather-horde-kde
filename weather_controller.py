@@ -47,6 +47,9 @@ class Controller:
         self.override_deadline = 0.0
         self.override_generation = 0
         self.settings = {'automation_enabled': False, 'automation_kind': 'prompt_preview', 'automation_target':'all', 'interval_minutes': 60, 'location': None}
+        from holiday_settings import DEFAULTS
+        import copy
+        self.settings.update(copy.deepcopy(DEFAULTS))
         self.state = 'idle'
         self.last_error = ''
         self.guard = {'decision': 'unknown', 'observed_at': 0}
@@ -218,7 +221,7 @@ class Controller:
 
     def status(self):
         with self.lock:
-            return {**self.settings, 'api_version': 1, 'service_version': SERVICE_VERSION,
+            return {**self.settings, 'calendar':self.calendar_now(), 'api_version': 1, 'service_version': SERVICE_VERSION,
                     'source_revision': SOURCE_REVISION, 'prompt_version':PROMPT_VERSION,
                     'catch_up_refresh': self.settings.get('catch_up_refresh', False),
                     'refresh': self.scheduler.status(time.monotonic()),
@@ -541,7 +544,7 @@ class Controller:
     def automatic_session_guard(self):
         if not self.settings['automation_enabled'] or self.override_status()['active']:
             return 'automation_changed'
-        if self.settings.get('catch_up_refresh', False):
+        if (self.settings.get('catch_up_refresh', False) or self.settings.get('holiday_themes', False) or self.settings.get('seasonal_themes', False)):
             unlocked = self.session_activity.poll()
             if unlocked is not True:
                 self.scheduler.observe_activity(False, unlocked, time.monotonic())
@@ -609,7 +612,7 @@ class Controller:
     def tick(self, now=None, monotonic_now=None):
         now = time.time() if now is None else now
         with self.lock:
-            if self.settings.get('catch_up_refresh', False):
+            if (self.settings.get('catch_up_refresh', False) or self.settings.get('holiday_themes', False) or self.settings.get('seasonal_themes', False)):
                 self.catchup_tick(now, time.monotonic() if monotonic_now is None else monotonic_now)
                 return
             if self.override_status()['active'] or not self.settings['automation_enabled'] or now < self.next_eligible_at: return
@@ -689,7 +692,9 @@ class Controller:
                 return {'candidates':[loc | {'confirmation_id':key} for key,(loc,_) in self.candidates.items()]}
             if method == 'POST' and path == '/v1/preview': return self.build_preview(body)
             if method == 'PUT' and path == '/v1/settings':
-                if set(body) - {'catch_up_refresh','checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
+                from holiday_settings import DEFAULTS, validate_settings
+                validate_settings(body)
+                if set(body) - set(DEFAULTS) - {'catch_up_refresh','checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
                 if 'catch_up_refresh' in body and type(body['catch_up_refresh']) is not bool:
                     raise ValueError('catch_up_refresh must be boolean')
                 if 'comparison_seed' in body and body['comparison_seed'] is not None and (type(body['comparison_seed']) is not int or not 0 <= body['comparison_seed'] <= 4294967295): raise ValueError('Seed must be an unsigned 32-bit integer or null for random')
@@ -805,7 +810,7 @@ class Controller:
                 if path == '/v1/render' and self.checkpoint:
                     targets = self.target_displays(body)
                     refresh_id = None
-                    if scheduled and self.settings.get('catch_up_refresh'):
+                    if scheduled and (self.settings.get('catch_up_refresh') or self.settings.get('holiday_themes') or self.settings.get('seasonal_themes')):
                         active = self.scheduler.active
                         if not active: return {'state':'deferred', 'reason':'No coordinator intent'}
                         refresh_id = active['generation_id']

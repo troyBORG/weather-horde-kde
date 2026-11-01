@@ -158,6 +158,10 @@ PlasmoidItem {
     property string imagePreviewCaption: "No validated image preview yet"
     property string previewText: "No preview yet. No image rendered."
 
+    property var calendarSettings: ({})
+    property string calendarSummary: "Calendar not available"
+    property string calendarDetails: ""
+    property string imageCalendarSummary: "No image calendar receipt"
     property bool compositionSupported: false
     property string framingMode: "auto"
     property bool rotationSupported: false
@@ -181,6 +185,11 @@ PlasmoidItem {
     }
     function acceptStatus(status) {
         online = true
+        calendarSettings = status
+        const cal = status.calendar
+        calendarSummary = cal ? ((cal.season || "Unknown season") + " • " + (cal.selected_theme || "No decoration") + " • " + (status.holiday_date_mode || "actual") + " local date " + (cal.local_date || "unresolved")) : "Calendar not available"
+        calendarDetails = cal ? JSON.stringify(cal, null, 2) : "Owner controller update required"
+        imageCalendarSummary = status.image_preview && status.image_preview.scene ? "Image receipt: " + (status.image_preview.scene.selected_theme || "No decoration") + " • " + (status.image_preview.scene.calendar_local_date || "legacy date unknown") : "No image calendar receipt"
         rotationSupported = !!status.capabilities && status.capabilities.scene_rotation === true
         sceneOverrides = status.scene_overrides || ({})
         sceneSupported = !!status.capabilities && status.capabilities.scene_controls === true
@@ -603,6 +612,26 @@ PlasmoidItem {
                     Label {
                         text: root.rotationSupported ? "Random chooses per monitor when generation starts, avoiding its last scene. Status checks never rotate it. Before the first render, prompt preview is illustrative. To change wallpapers automatically, select Auto generate + apply and enable automation above; GPU/game/VR safeguards still apply." : "Random and per-monitor scenes require owner controller rollout."
                         wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    Label { objectName: "calendarSummary"; text: root.calendarSummary; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    Label { text: root.imageCalendarSummary + " — independent of current prompt; not proof of displayed wallpaper"; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    CheckBox { id: calendarOptions; text: "Season and holiday options" }
+                    ColumnLayout {
+                        visible: calendarOptions.checked; Layout.fillWidth: true
+                        Switch { objectName: "seasonalThemesToggle"; text: "Seasonal vegetation styling"; checked: root.calendarSettings.seasonal_themes === true; enabled: root.online && !root.busy && root.calendarSettings.seasonal_themes !== undefined; onClicked: root.saveSettings({seasonal_themes:checked}) }
+                        Switch { objectName: "holidayThemesToggle"; text: "Day-of holiday decorations"; checked: root.calendarSettings.holiday_themes === true; enabled: root.online && !root.busy && root.calendarSettings.holiday_themes !== undefined; onClicked: root.saveSettings({holiday_themes:checked}) }
+                        ComboBox { objectName: "holidayStrengthSelector"; model: ["Subtle", "Balanced"]; currentIndex: root.calendarSettings.theme_strength === "subtle" ? 0 : 1; onActivated: root.saveSettings({theme_strength:currentIndex===0 ? "subtle" : "balanced"}) }
+                        ComboBox { objectName: "holidayPresetSelector"; model: ["Mainstream + applicable Iowa", "Metadata only"]; currentIndex: root.calendarSettings.holiday_preset === "metadata_only" ? 1 : 0; onActivated: root.saveSettings({holiday_preset:currentIndex===0 ? "mainstream_iowa" : "metadata_only"}) }
+                        ComboBox { objectName: "holidayDateModeSelector"; model: ["Actual celebration date", "Employee observed date"]; currentIndex: root.calendarSettings.holiday_date_mode === "observed" ? 1 : 0; onActivated: root.saveSettings({holiday_date_mode:currentIndex===0 ? "actual" : "observed"}) }
+                        ComboBox { objectName: "calendarJurisdictionSelector"; model: ["Use confirmed location jurisdiction", "Explicit Iowa calendar correction"]; currentIndex: root.calendarSettings.calendar_subdivision === "IA" ? 1 : 0; onActivated: root.saveSettings({calendar_subdivision:currentIndex===0 ? "" : "IA"}) }
+                        Label { text: "Calendar correction does not move weather coordinates. Religious packs are excluded pending verified dates. Remembrance decoration is opt-in. Themes never enable Auto; calendar-enabled Auto uses the existing safe-grace coordinator."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                        TextField { id: disabledHolidays; objectName: "disabledHolidaysInput"; Layout.fillWidth: true; placeholderText: "Disabled holiday IDs, comma separated"; text: (root.calendarSettings.disabled_holidays || []).join(",") }
+                        Button { text: "Save disabled holidays"; enabled: root.online && !root.busy; onClicked: root.saveSettings({disabled_holidays:disabledHolidays.text.split(",").map(function(x){return x.trim()}).filter(function(x){return x.length>0})}) }
+                        TextField { id: enabledHolidays; Layout.fillWidth: true; placeholderText: "Opt-in holiday IDs, comma separated"; text: (root.calendarSettings.enabled_holidays || []).join(",") }
+                        Button { text: "Save opt-in holidays"; enabled: root.online && !root.busy; onClicked: root.saveSettings({enabled_holidays:enabledHolidays.text.split(",").map(function(x){return x.trim()}).filter(function(x){return x.length>0})}) }
+                        TextField { id: holidayDate; objectName: "holidayPreviewDate"; placeholderText: "Offline preview YYYY-MM-DD"; text: root.calendarSettings.holiday_preview_date || "" }
+                        Button { objectName: "holidayPreviewButton"; text: "Offline fixture prompt only"; enabled: root.online && !root.busy; onClicked: root.request("POST", "/v1/calendar/preview", {date:holidayDate.text}, function(result){root.previewText=JSON.stringify(result,null,2)}) }
+                        Label { text: root.calendarDetails; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     }
                     Label { text: "Framing" }
                     ComboBox {

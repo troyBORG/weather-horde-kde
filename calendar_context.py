@@ -81,7 +81,7 @@ def resolve_calendar(now_utc, location, settings, catalog=None):
         candidates=[e for e in events if e['theme_id'] and (e['default_enabled'] or e['id'] in settings.get('enabled_holidays',[])) and e['id'] not in settings.get('disabled_holidays',[])]
         priorities=settings.get('holiday_priorities',{})
         candidates.sort(key=lambda e:(-priorities.get(e['id'],e['priority']),e['id']))
-        if candidates and settings.get('holiday_themes',False):
+        if candidates and settings.get('holiday_themes',False) and settings.get('holiday_preset')!='metadata_only':
             chosen=candidates[0]
             result.update(selected_theme=chosen['theme_id'],selection_reason=('explicit priority' if chosen['id'] in priorities else 'default priority')+' then stable ID')
         result.update(events=events,event_ids=[e['id'] for e in events])
