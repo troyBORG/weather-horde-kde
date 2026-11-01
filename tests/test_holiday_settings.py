@@ -48,6 +48,19 @@ class HolidaySettingsTests(unittest.TestCase):
             self.assertEqual(c.settings['interval_minutes'],30)
             self.assertIn('invalid',c.status()['calendar_settings_notice'])
 
+    def test_preview_date_preference_does_not_cancel_live_refresh(self):
+        with tempfile.TemporaryDirectory() as d:
+            c=Controller(d)
+            c.scheduler.configure(True,'image_preview',['L'],3600)
+            c.scheduler.request('interval',['L'])
+            c.scheduler.observe_activity(True,True,0); c.scheduler.grace=0
+            active=c.scheduler.next_action(1,0)
+            deadline=c.next_eligible_at
+            c.dispatch('PUT','/v1/settings',{'holiday_preview_date':'2026-10-31'})
+            self.assertEqual(c.scheduler.active,active)
+            self.assertEqual(set(c.scheduler.pending),{'L'})
+            self.assertEqual(c.next_eligible_at,deadline)
+
     def test_calendar_settings_validated_persisted_without_automation_changes(self):
         with tempfile.TemporaryDirectory() as d:
             c=Controller(d)

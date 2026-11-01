@@ -755,12 +755,12 @@ class Controller:
                 if update.get('automation_enabled') is True and self.override_status()['active']:
                     raise ValueError('Automation is paused during testing override')
                 self.settings.update(update)
-                if update:
+                if set(update) - {'holiday_preview_date'}:
                     self.scheduler.configure(False, self.settings['automation_kind'], [], self.settings['interval_minutes']*60)
                     self.refresh_started = False
                     self.save_refresh()
+                    self.next_eligible_at = time.time() + self.settings['interval_minutes']*60
                 if 'checkpoint' in update: self.checkpoint = update['checkpoint']
-                self.next_eligible_at = time.time() + self.settings['interval_minutes']*60
                 self.save()
                 return self.status()
             if method == 'POST' and (path == '/v1/apply' or (path == '/v1/restore' and self.wallpaper)):
