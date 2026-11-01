@@ -9,6 +9,7 @@ from holiday_preview import fixture_preview
 
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--date',required=True)
+parser.add_argument('--theme',help='Explicit offline-only motif override; never changes actual event dates')
 parser.add_argument('--timezone',default='America/Chicago')
 parser.add_argument('--country',default='US')
 parser.add_argument('--subdivision',default='')
@@ -19,6 +20,6 @@ parser.add_argument('--latitude',type=float,default=41.8,help='Illustrative defa
 parser.add_argument('--longitude',type=float,default=-90.5,help='Illustrative default; not device geolocation')
 args=parser.parse_args()
 try:
-    print(json.dumps(fixture_preview(args.date,{'timezone':args.timezone,'country_code':args.country,'subdivision_code':args.subdivision,'latitude':args.latitude,'longitude':args.longitude},scene='urban' if args.scene=='town' else args.scene,width=args.width,height=args.height),indent=2))
+    print(json.dumps(fixture_preview(args.date,{'timezone':args.timezone,'country_code':args.country,'subdivision_code':args.subdivision,'latitude':args.latitude,'longitude':args.longitude},scene='urban' if args.scene=='town' else args.scene,width=args.width,height=args.height,theme_override=args.theme),indent=2))
 except (ValueError,KeyError) as error:
     parser.error(str(error))
