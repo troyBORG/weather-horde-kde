@@ -124,6 +124,21 @@ PlasmoidItem {
     property bool online: false
     property bool busy: false
     property var activeRequest: null
+    property bool catchupEnabled: false
+    property var refreshState: ({})
+    readonly property string refreshSummary: {
+        if (!online || statusStale) return "Refresh: disconnected / last known; no current success verified"
+        if (!catchupEnabled) return "Catch-up disabled — interval policy unchanged"
+        let pending = refreshState.pending || []
+        let applied = (refreshState.last_success || {}).image_wallpaper || {}
+        let history = Object.keys(applied).map(function(k) { return k + ": " + new Date(applied[k]*1000).toLocaleString() }).join(" · ")
+        return "Refresh " + (pending.length ? "pending: " + pending.join(", ") : "not pending") +
+            " · " + (refreshState.waiting_reason || "unknown") +
+            " · settling " + (refreshState.settling_seconds || 0) + "s" +
+            (refreshState.retry_seconds ? " · retry " + refreshState.retry_seconds + "s" : "") +
+            (refreshState.action_required ? " · action required" : "") +
+            "\nLast verified wallpaper change: " + (history || "none recorded (prompt/preview is not wallpaper)")
+    }
     property bool automationEnabled: false
     property int intervalMinutes: 60
     readonly property var intervals: [30, 60, 120, 240, 480, 720, 1440]
@@ -221,6 +236,8 @@ PlasmoidItem {
         controllerState = status.state
         guardState = status.guard ? status.guard.decision : "unknown"
         wallpaperGuardState = status.wallpaper_guard || guardState
+        catchupEnabled = status.catch_up_refresh === true
+        refreshState = status.refresh || ({})
         automationEnabled = status.automation_enabled === true
         intervalMinutes = status.interval_minutes
         monitors = status.displays || []
@@ -497,6 +514,19 @@ PlasmoidItem {
                         onActivated: root.saveSettings({automation_target: currentIndex === 0 ? "all" : root.monitors[currentIndex-1].id})
                     }
                     Label { text: "Auto generate + apply changes the chosen target(s) at the interval only while safe. Games/VR defer background work; testing overrides never authorize Auto. OFF until explicitly enabled."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    Switch {
+                        objectName: "catchupRefreshToggle"
+                        text: "Catch up overdue after unlock / gaming; pause while locked"
+                        checked: root.catchupEnabled
+                        enabled: root.online && !root.busy
+                        onClicked: {
+                            const desired = checked
+                            checked = Qt.binding(function() { return root.catchupEnabled })
+                            root.saveSettings({catch_up_refresh: desired})
+                        }
+                    }
+                    Label { objectName: "refreshStatus"; text: root.refreshSummary; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    Label { text: "Catch-up waits for 60 seconds of continuously safe observations. It preserves Auto, mode, target and interval; enabling catch-up does not enable Auto."; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     Label { text: "Interval" }
                     ComboBox {
                         Layout.fillWidth: true

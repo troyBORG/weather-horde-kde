@@ -11,6 +11,7 @@ A KDE Plasma 6 widget and authenticated loopback controller for weather-aware wa
 - Reviewed local SD1.5/SDXL checkpoint discovery and bounded native-geometry workflows. Model files are not included.
 - Manual **Generate** creates a validated preview. **Apply** and **Restore** are separate selected-monitor transactions with readback.
 - Explicit Auto choices distinguish prompt preview, generation, and generation plus wallpaper application. Installing capabilities is not new automation consent.
+- Opt-in [catch-up refresh](docs/catch-up-refresh.md) coalesces overdue work after unlock/gaming, pauses while locked, and requires 60 continuously safe seconds. This feature branch is **runtime unverified** until owner reload and actual render/apply acceptance.
 - Game/VR, unknown clients, GPU load/VRAM, queue ownership and image-validation guards defer unsafe work. Testing override is explicit and temporary, not a recommended deployment workaround.
 
 Prompts are not pixel constraints. Synthetic fixture images and passing tests do not prove generated visual quality or live wallpaper application.

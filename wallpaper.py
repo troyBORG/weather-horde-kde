@@ -55,6 +55,14 @@ class WallpaperManager:
         if not self.journal.exists(): return []
         return list(json.loads(self.journal.read_text()))
 
+    def preflight(self, display):
+        """Read-only eligibility; apply still repeats every transaction guard."""
+        journal=json.loads(self.journal.read_text()) if self.journal.exists() else {}
+        if journal.get(display['id'],{}).get('state')=='pending':
+            raise ValueError('Unreconciled wallpaper transaction; use Restore previous first')
+        if not self.backend.snapshot(display).get('plugin'):
+            raise ValueError('Original wallpaper plugin unavailable')
+
     def apply(self, display, identifier, guard):
         if not isinstance(identifier,str) or not re.fullmatch('[0-9a-f]{32}',identifier):
             raise ValueError('Select a validated preview')
@@ -85,8 +93,10 @@ class WallpaperManager:
         self.backend.replace(display,before,after)
         if self.backend.snapshot(display)!=after:
             raise ValueError('Wallpaper readback failed; restore receipt retained')
-        journal[display['id']]['state']='applied'; atomic_json(self.journal,journal)
-        return {'state':'applied','target':display['id'],'preview_id':identifier,'verified':True}
+        applied_at = time.time()
+        journal[display['id']].update(state='applied', applied_at=applied_at, preview_id=identifier)
+        atomic_json(self.journal,journal)
+        return {'state':'applied','target':display['id'],'preview_id':identifier,'verified':True,'applied_at':applied_at}
 
     def reconcile_pending(self, display, commit=False):
         """DP-2 receipt-only recovery. Caller MUST exclude concurrent writers.

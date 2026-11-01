@@ -10,6 +10,22 @@ The portability branch uses temporary Comfy files and explicit synthetic account
 
 New regressions cover configured/default Comfy paths, absolute-path rejection, same-UID/non-root owner selection, explicit staging trust, checkout-relative launching, transient environment propagation, unit syntax and literal dollar/template-token paths. Fail-first runs caught the original fixed mount/home paths and unit escaping mistakes before the passing runs. No production owner bus, GPU job, service restart or wallpaper action was used. Owner deployment and actual live generation remain separate acceptance work.
 
+## Catch-up independent-review correction
+
+The original `8dd1c280` rollout is withdrawn. Fail-first integrated regressions
+reproduced a queue submission despite a real WallpaperManager pending receipt,
+loss of a permanent scheduler reason after safe observations, retryable permanent
+apply failure, and incorrect latch release while configuration remained invalid.
+The corrected candidate's full native package/harness run executed **228 cases /
+227 unique IDs, zero failures, errors or skips** in a private non-owner desktop
+HOME/XDG with no inherited GUI bus. The original imported duplicate remains.
+An initial scratch run on the delivery mount passed package construction but
+failed ten filesystem-trust assertions; rerunning under trusted non-world-writable
+home ancestry passed without weakening guards. Qt offscreen warnings remain.
+Final committed-archive hashes and test results belong in the delivery receipt.
+Owner installation remains blocked on independent re-review; no owner bus, GPU
+submission, wallpaper change or service restart was used.
+
 ## Verified toolchain
 
 ```text

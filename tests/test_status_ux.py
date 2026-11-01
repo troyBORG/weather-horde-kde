@@ -65,6 +65,11 @@ Item {
    check(widget.statusReason.indexOf("game_active")>=0 && widget.statusReason.indexOf("Current guard: safe")>=0,"historical quarantine distinct from current guard")
    let action=label(widget.fullRepresentationItem,"monitorActionNotice")
    check(action && action.visible && action.text.indexOf("fixture-job")>=0,"prompt ID visible beside Apply controls")
+   widget.acceptStatus({state:"idle",guard:{decision:"safe"},automation_enabled:true,interval_minutes:60,catch_up_refresh:true,refresh:{pending:["TEST"],waiting_reason:"settling",settling_seconds:40,retry_seconds:0,last_success:{image_wallpaper:{TEST:1700000000}}}})
+   check(widget.refreshSummary.indexOf("40s")>=0 && widget.refreshSummary.indexOf("TEST")>=0,"pending target and grace visible")
+   check(label(widget.fullRepresentationItem,"catchupRefreshToggle").checked,"catchup consent visible")
+   widget.online=false
+   check(widget.refreshSummary.indexOf("last known")>=0,"disconnected freshness not live")
    status("safe","idle",false); check(widget.statusTitle==="Automation off","off")
    status("safe","idle",true); check(widget.statusTitle==="Idle — ready","ready")
    status("safe","queued",false); check(widget.statusTitle==="Queued — image preview","queued")

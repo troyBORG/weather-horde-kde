@@ -99,6 +99,36 @@ class Controller:
         # Restart/login begins a fresh saved interval, never an immediate catch-up
         # render and never the old hard-coded one-hour delay for 30-minute Auto.
         self.next_eligible_at = time.time() + self.settings['interval_minutes'] * 60
+        from refresh_scheduler import RefreshScheduler
+        from session_activity import SessionActivity
+        self.scheduler = RefreshScheduler()
+        self.session_activity = SessionActivity()
+        self.last_unlocked = None
+        self.refresh_started = False
+        try:
+            saved = json.loads((self.root/'refresh-state.json').read_text())
+            self.scheduler.success = saved.get('success', {})
+            self.scheduler.permanent_error = saved.get('permanent_error', '')
+            if self.scheduler.permanent_error:
+                self.scheduler.fail(self.scheduler.permanent_error, retryable=False)
+                self.last_error = self.scheduler.permanent_error
+        except (OSError, ValueError):
+            pass
+        # Published preview receipts also survive a crash before scheduler save.
+        for target, record in self.previews_by_target.items():
+            stamp = record.get('generated_at')
+            if type(stamp) in (int, float) and 0 < stamp <= time.time():
+                self.scheduler.success.setdefault('image_preview', {})[target] = stamp
+        # Recover a crash after durable compositor readback but before scheduler save.
+        self.scheduler.success['image_wallpaper'] = {}
+        try:
+            receipts = json.loads((self.root/'wallpaper-restore.json').read_text())
+            for target, receipt in receipts.items():
+                stamp = receipt.get('applied_at')
+                if receipt.get('state') == 'applied' and type(stamp) in (int, float) and 0 < stamp <= time.time():
+                    self.scheduler.success.setdefault('image_wallpaper', {})[target] = stamp
+        except (OSError, ValueError):
+            pass
 
     def enable_reviewed_models(self):
         import subprocess
@@ -179,6 +209,8 @@ class Controller:
         with self.lock:
             return {**self.settings, 'api_version': 1, 'service_version': SERVICE_VERSION,
                     'source_revision': SOURCE_REVISION, 'prompt_version':PROMPT_VERSION,
+                    'catch_up_refresh': self.settings.get('catch_up_refresh', False),
+                    'refresh': self.scheduler.status(time.monotonic()),
                     'models':self.models, 'model_notice':self.model_notice, 'checkpoint':self.checkpoint,
                     'comparison_seed':self.settings.get('comparison_seed'),
                     'framing':self.settings.get('framing','auto'), 'composition_version':COMPOSITION_VERSION,
@@ -253,7 +285,7 @@ class Controller:
         with self.lock: self.guard = guard
         return guard['decision']
 
-    def render_images(self, targets, location, policy=None, auto_apply=False):
+    def render_images(self, targets, location, policy=None, auto_apply=False, refresh_id=None):
         """Serial owned preview jobs; fail closed on ambiguous transport results."""
         from comfy_preview import build_workflow, SubmissionDeferred
         import hashlib
@@ -310,6 +342,7 @@ class Controller:
                 journal.chmod(0o600)
                 outstanding = True
                 job = self.transport.queue(workflow)
+                if refresh_id: self.refresh_event('job_accepted', generation_id=refresh_id, prompt_id=job, targets=ids)
                 with self.lock:
                     self.render_request = {'state':'submitted', 'reason':'Comfy accepted owned prompt', 'prompt_id':job}
                 journal.write_text(json.dumps({'prompt_id':job, 'state':'queued'}))
@@ -335,7 +368,7 @@ class Controller:
                         journal.unlink(missing_ok=True)
                         raw = self.transport.image(job)
                         blocked = blocked or guard() != 'safe'
-                        metadata = {'prompt_id':job, 'testing_override':override_receipt, 'quarantine_evidence':self.quarantine, 'targets':ids, 'positive':scene['positive'],
+                        metadata = {'generated_at':time.time(), 'prompt_id':job, 'testing_override':override_receipt, 'quarantine_evidence':self.quarantine, 'targets':ids, 'positive':scene['positive'],
                                     'negative':scene['negative'], 'scene':scene,
                                     'workflow_sha256':hashlib.sha256(json.dumps(workflow,sort_keys=True).encode()).hexdigest()}
                         result = self.store.save(raw,size,metadata,quarantined=blocked,guard=guard)
@@ -348,13 +381,33 @@ class Controller:
                                 for target in ids: self.previews_by_target[target] = result
                                 from wallpaper import atomic_json
                                 atomic_json(self.root/"previews-by-target.json", {target:record["id"] for target,record in self.previews_by_target.items()})
+                        if refresh_id: self.refresh_event('render_complete', generation_id=refresh_id, targets=ids, quarantined=blocked, checkpoint=self.checkpoint, scene=scene.get('scene_selection'), weather_at=scene.get('observed_at'))
                         if blocked: return
+                        if refresh_id and not auto_apply:
+                            for target_id in ids: self.refresh_complete(target_id, refresh_id)
                         if auto_apply:
                             for target in targets:
                                 if target["id"] not in ids: continue
                                 if guard() != "safe": raise ValueError("Automatic apply deferred: activity or automation settings changed")
-                                applied = self.wallpaper.apply(target, result["id"], guard)
+                                if refresh_id:
+                                    from refresh_freshness import result_fresh
+                                    from scene import solar_daypart, solar_elevation
+                                    instant = time.time()
+                                    daypart = solar_daypart(solar_elevation(instant, location['latitude'], location['longitude']))
+                                    if not result_fresh(scene, instant, self.settings['interval_minutes']*60, daypart):
+                                        raise ValueError('Stale scene: fresh weather/daypart render required')
+                                try:
+                                    applied = self.wallpaper.apply(target, result["id"], guard)
+                                except Exception as error:
+                                    if refresh_id:
+                                        with self.lock:
+                                            if self.scheduler.active and self.scheduler.active['generation_id'] == refresh_id:
+                                                self.scheduler.fail(str(error), retryable=False)
+                                                self.save_refresh()
+                                    raise
                                 with self.lock: self.wallpaper_action = applied
+                                if refresh_id and applied.get('verified') is True:
+                                    self.refresh_complete(target['id'], refresh_id, applied.get('applied_at'))
                         break
                     with self.lock: self.state = 'rendering_guard_blocked' if blocked else 'rendering'
                     time.sleep(self.poll_seconds)
@@ -387,6 +440,11 @@ class Controller:
                     json.dump({'prompt_id':job, 'state':self.state,
                                'testing_override':override_receipt, 'quarantine':self.quarantine}, f)
             finally:
+                with self.lock:
+                    if refresh_id and self.scheduler.active and self.scheduler.active['generation_id'] == refresh_id:
+                        self.refresh_event('refresh_incomplete', generation_id=refresh_id, state=self.state)
+                        self.scheduler.fail('refresh_incomplete', retryable=not outstanding, monotonic_now=time.monotonic())
+                        self.save_refresh()
                 self.job_guard = None
                 if not outstanding: self.render_lock.release()
 
@@ -424,9 +482,117 @@ class Controller:
             self.last_error = 'Weather preview unavailable; previous preview retained'
             raise
 
-    def tick(self, now=None):
+    def refresh_event(self, event, **fields):
+        from wallpaper import atomic_json
+        with self.lock:
+            path = self.root/'refresh-events.json'
+            try: events = json.loads(path.read_text())
+            except (OSError, ValueError): events = []
+            events.append({'at': time.time(), 'event': event, **fields})
+            atomic_json(path, events[-100:])
+
+    def save_refresh(self):
+        from wallpaper import atomic_json
+        atomic_json(self.root/'refresh-state.json', {'success': self.scheduler.success,
+                    'pending': {k: sorted(v) for k, v in self.scheduler.pending.items()},
+                    'permanent_error': self.scheduler.permanent_error})
+
+    def refresh_complete(self, target, generation_id, at=None):
+        with self.lock:
+            if self.scheduler.complete(target, generation_id, time.time() if at is None else at):
+                self.refresh_event('apply_verified' if self.scheduler.mode == 'image_wallpaper' else 'preview_complete', generation_id=generation_id, target=target, mode=self.scheduler.mode)
+                self.save_refresh()
+
+    def reconcile_refresh(self, verified_restore=False):
+        """Explicit read-only configuration check; never called by the timer."""
+        if (self.render_lock.locked() and not verified_restore) or (self.root/'inflight.json').exists():
+            raise ValueError('Wait for or reconcile the outstanding render')
+        mode = self.settings['automation_kind']
+        if not self.settings.get('location') or (mode != 'prompt_preview' and not self.checkpoint):
+            raise ValueError('configuration_required')
+        if mode != 'prompt_preview':
+            targets = self.target_displays({'target':self.settings['automation_target']})
+            if not targets: raise ValueError('No live targets')
+            if self.model_gate() != 'safe': raise ValueError(self.model_gate())
+            if mode == 'image_wallpaper':
+                if self.wallpaper is None: raise ValueError('Wallpaper adapter not configured')
+                for display in targets: self.wallpaper.preflight(display)
+        self.scheduler.permanent_error = ''
+        self.scheduler.retry_at = self.scheduler.failures = 0
+        self.scheduler.safe_since = self.scheduler.last_observed = None
+        self.last_error = ''
+        self.save_refresh()
+
+    def automatic_session_guard(self):
+        if not self.settings['automation_enabled'] or self.override_status()['active']:
+            return 'automation_changed'
+        if self.settings.get('catch_up_refresh', False):
+            unlocked = self.session_activity.poll()
+            if unlocked is not True:
+                self.scheduler.observe_activity(False, unlocked, time.monotonic())
+                return 'session_locked' if unlocked is False else 'session_unknown'
+        return 'safe'
+
+    def catchup_tick(self, now, monotonic_now):
+        s = self.scheduler
+        selected = self.settings['automation_target']
+        targets = [d['id'] for d in self.displays if selected == 'all' or d['id'] == selected]
+        if self.settings['automation_kind'] == 'prompt_preview': targets = ['prompt']
+        s.configure(self.settings['automation_enabled'] and not self.override_status()['active'],
+                    self.settings['automation_kind'], targets, self.settings['interval_minutes']*60)
+        if not s.enabled:
+            self.save_refresh()
+            return
+        unlocked = self.session_activity.poll()
+        reason = 'startup' if not self.refresh_started else 'unlock' if unlocked is True and self.last_unlocked is not True else 'interval'
+        self.refresh_started, self.last_unlocked = True, unlocked
+        s.reconcile(now, reason)
+        safe = self.guard.get('decision') == 'safe' and 0 <= time.time()-self.guard.get('observed_at', 0) <= 15
+        s.observe_activity(safe, unlocked, monotonic_now)
+        summary = (tuple(sorted(s.pending)), s.blocker, unlocked)
+        if summary != getattr(self, '_refresh_summary', None):
+            self.refresh_event('coalesced_or_deferred', trigger=reason, targets=sorted(s.pending), waiting_reason=s.blocker)
+            self._refresh_summary = summary
+        self.save_refresh()
+        if self.render_lock.locked() or (self.root/'inflight.json').exists(): return
+        action = s.next_action(now, monotonic_now)
+        if not action: return
+        self.refresh_event('job_requested', generation_id=action['generation_id'], targets=action['targets'], mode=action['mode'])
+        try:
+            if not self.settings.get('location') or (action['mode'] != 'prompt_preview' and not self.checkpoint) or (action['mode'] == 'image_wallpaper' and self.wallpaper is None):
+                self.last_error = 'configuration_required'
+                self.state = 'failed'
+                s.fail(self.last_error, retryable=False, monotonic_now=monotonic_now)
+                self.save_refresh()
+                return
+            if action['mode'] == 'image_wallpaper':
+                try:
+                    for display in self.displays:
+                        if display['id'] in action['targets']: self.wallpaper.preflight(display)
+                except (ValueError, OSError) as error:
+                    self.state, self.last_error = 'failed', str(error)
+                    s.fail(self.last_error, retryable=False, monotonic_now=monotonic_now)
+                    self.save_refresh()
+                    return
+            if action['mode'] == 'prompt_preview':
+                self.build_preview({'target': selected})
+                self.refresh_complete('prompt', action['generation_id'])
+            else:
+                result = self.dispatch('POST', '/v1/render', {'target': selected}, scheduled=True)
+                if result.get('state') != 'queued':
+                    s.fail(result.get('reason', 'deferred'), monotonic_now=monotonic_now)
+        except Exception:
+            self.state = 'failed'
+            self.last_error = 'Refresh failed; confirm location, model and wallpaper configuration'
+            s.fail('configuration_or_transport_failure', monotonic_now=monotonic_now)
+        self.save_refresh()
+
+    def tick(self, now=None, monotonic_now=None):
         now = time.time() if now is None else now
         with self.lock:
+            if self.settings.get('catch_up_refresh', False):
+                self.catchup_tick(now, time.monotonic() if monotonic_now is None else monotonic_now)
+                return
             if self.override_status()['active'] or not self.settings['automation_enabled'] or now < self.next_eligible_at: return
             self.next_eligible_at = now + self.settings['interval_minutes']*60
             try:
@@ -454,6 +620,11 @@ class Controller:
     def dispatch(self, method, path, body, scheduled=False):
         with self.lock:
             if method == 'GET' and path == '/v1/status': return self.status()
+            if method == 'POST' and path == '/v1/refresh/reconcile':
+                if body != {'confirmation':'Reconcile automatic refresh'}:
+                    raise ValueError('Explicit refresh reconciliation confirmation required')
+                self.reconcile_refresh()
+                return self.status()
             if method == 'POST' and path == '/v1/models/refresh':
                 if self.render_lock.locked(): raise ValueError('Wait for current preview')
                 self.refresh_models()
@@ -499,7 +670,9 @@ class Controller:
                 return {'candidates':[loc | {'confirmation_id':key} for key,(loc,_) in self.candidates.items()]}
             if method == 'POST' and path == '/v1/preview': return self.build_preview(body)
             if method == 'PUT' and path == '/v1/settings':
-                if set(body) - {'checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
+                if set(body) - {'catch_up_refresh','checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
+                if 'catch_up_refresh' in body and type(body['catch_up_refresh']) is not bool:
+                    raise ValueError('catch_up_refresh must be boolean')
                 if 'comparison_seed' in body and body['comparison_seed'] is not None and (type(body['comparison_seed']) is not int or not 0 <= body['comparison_seed'] <= 4294967295): raise ValueError('Seed must be an unsigned 32-bit integer or null for random')
                 if self.render_lock.locked() and any(k in body for k in ('checkpoint','comparison_seed')): raise ValueError('Wait for current preview')
                 if 'checkpoint' in body:
@@ -536,6 +709,10 @@ class Controller:
                 if update.get('automation_enabled') is True and self.override_status()['active']:
                     raise ValueError('Automation is paused during testing override')
                 self.settings.update(update)
+                if update:
+                    self.scheduler.configure(False, self.settings['automation_kind'], [], self.settings['interval_minutes']*60)
+                    self.refresh_started = False
+                    self.save_refresh()
                 if 'checkpoint' in update: self.checkpoint = update['checkpoint']
                 self.next_eligible_at = time.time() + self.settings['interval_minutes']*60
                 self.save()
@@ -552,9 +729,20 @@ class Controller:
                         result = self.wallpaper.apply(targets[0], body.get('preview_id'), self.wallpaper_guard)
                     else:
                         result = self.wallpaper.restore(targets[0], self.wallpaper_guard)
+                    if result.get('verified') is True:
+                        successes = self.scheduler.success.setdefault('image_wallpaper', {})
+                        if path == '/v1/apply' and result.get('applied_at'):
+                            successes[targets[0]['id']] = result['applied_at']
+                        elif path == '/v1/restore':
+                            successes.pop(targets[0]['id'], None)
+                            # Restore owns the render lock; validate all remaining
+                            # configuration/receipts before releasing a durable latch.
+                            try: self.reconcile_refresh(verified_restore=True)
+                            except (ValueError, OSError): pass
+                        self.save_refresh()
                     self.state = result['state']
                     self.wallpaper_action = result
-                    self.last_error = ''
+                    self.last_error = self.scheduler.permanent_error
                     return result
                 except Exception as error:
                     self.last_error = str(error)
@@ -572,7 +760,19 @@ class Controller:
                     def scheduled_guard():
                         if self.settings != expected_settings or not self.settings['automation_enabled'] or self.override_status()['active']:
                             return 'automation_changed'
-                        return self.render_guard()
+                        decision = self.automatic_session_guard()
+                        decision = self.render_guard() if decision == 'safe' else decision
+                        if decision != 'safe':
+                            with self.lock: self.scheduler.observe_activity(False, True, time.monotonic())
+                        return decision
+                    def scheduled_startup():
+                        if self.settings != expected_settings: return 'automation_changed'
+                        decision = self.automatic_session_guard()
+                        decision = self.startup_guard() if decision == 'safe' else decision
+                        if decision != 'safe':
+                            with self.lock: self.scheduler.observe_activity(False, True, time.monotonic())
+                        return decision
+                    scheduled_guard.startup = scheduled_startup
                     policy = (scheduled_guard, {'enabled':False, 'used':False, 'reasons':[], 'confirmation':None, 'ttl_seconds':0})
                 if path == '/v1/render' and self.comfy_service and self.transport.owned_gpu_pid() is None:
                     decision = getattr(policy[0], 'startup', self.startup_guard)()
@@ -585,6 +785,12 @@ class Controller:
                     return {'state':self.state, 'reason':decision, 'prompt_id':None}
                 if path == '/v1/render' and self.checkpoint:
                     targets = self.target_displays(body)
+                    refresh_id = None
+                    if scheduled and self.settings.get('catch_up_refresh'):
+                        active = self.scheduler.active
+                        if not active: return {'state':'deferred', 'reason':'No coordinator intent'}
+                        refresh_id = active['generation_id']
+                        targets = [t for t in targets if t['id'] in active['targets']]
                     if not targets: raise ValueError('No live targets; run from owning graphical session')
                     if not self.settings['location']: raise ValueError('Confirm a location first')
                     if not self.render_lock.acquire(blocking=False):
@@ -593,7 +799,7 @@ class Controller:
                     self.last_error = ''
                     self.render_request = {'state':'queued', 'reason':'Checking eligibility/startup; not yet submitted to Comfy', 'prompt_id':None}
                     self.render_thread = threading.Thread(target=self.render_images,
-                        args=(targets, dict(self.settings['location']), policy, scheduled and self.settings['automation_kind']=='image_wallpaper'), daemon=True)
+                        args=(targets, dict(self.settings['location']), policy, scheduled and self.settings['automation_kind']=='image_wallpaper', refresh_id), daemon=True)
                     self.render_thread.start()
                     return {'state':'queued', 'reason':'Image preview requested; wallpaper remains untouched'}
                 self.state = 'blocked_preview_only'
