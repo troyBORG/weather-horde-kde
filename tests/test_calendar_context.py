@@ -77,6 +77,14 @@ class CalendarTests(unittest.TestCase):
             c=resolve_calendar(now,LOCATION,SETTINGS,invalid)
             self.assertTrue(c['notice']); self.assertIsNone(c['selected_theme'])
 
+    def test_curated_mothers_and_fathers_days_are_not_iowa_only(self):
+        from calendar_context import resolve_calendar
+        for day,name in [('2026-05-10',"Mother's Day"),('2026-06-21',"Father's Day")]:
+            c=resolve_calendar(datetime.fromisoformat(day+'T18:00:00+00:00'),LOCATION|{'subdivision_code':'IL'},SETTINGS)
+            self.assertIn(name,[e['name'] for e in c['events']])
+            for event in c['events']:
+                self.assertTrue(all(v['jurisdiction']!='US-IA' for v in event['classifications']))
+
     def test_chicago_halloween_while_utc_is_november(self):
         self.assertIsNotNone(importlib.util.find_spec('calendar_context'), 'pure resolver missing')
         from calendar_context import resolve_calendar

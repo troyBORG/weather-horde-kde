@@ -456,6 +456,12 @@
           "category": "statutory_recognition",
           "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
           "section": "1C.3"
+        },
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
         }
       ]
     },
@@ -478,6 +484,12 @@
           "category": "statutory_recognition",
           "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
           "section": "1C.3"
+        },
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
         }
       ]
     },
