@@ -32,6 +32,26 @@ class HolidayPromptTests(unittest.TestCase):
         self.assertEqual(off['positive'],base['positive'])
 
 
+    def test_daypart_and_warm_winter_cold_spring_fixture_matrix(self):
+        for stamp,temp,code,cloud,expected in [
+            ('2026-11-01T04:00:00+00:00',50,0,0,'halloween'),
+            ('2026-12-25T18:00:00+00:00',65,0,0,'christmas'),
+            ('2026-03-10T18:00:00+00:00',15,3,100,None),
+            ('2026-03-29T18:00:00+00:00',55,3,100,'iowa_colors')]:
+            instant=datetime.fromisoformat(stamp)
+            data={'current':{'time':instant.timestamp(),'temperature_2m':temp,'weather_code':code,'is_day':1,'cloud_cover':cloud,'precipitation':0}}
+            base=weather_preview(LOCATION,lambda _:data,scene_kind='urban',now_utc=instant)
+            themed=weather_preview(LOCATION,lambda _:data,scene_kind='urban',now_utc=instant,calendar_settings={'holiday_themes':True,'seasonal_themes':True})
+            self.assertEqual(themed['selected_theme'],expected)
+            self.assertEqual(base['weather_evidence'],themed['weather_evidence'])
+            self.assertEqual(base['negative'],themed['negative'])
+            self.assertTrue(themed['positive'].startswith(base['positive']))
+            self.assertNotIn('snow',themed['positive'].lower())
+            self.assertNotIn('fog',themed['positive'].lower())
+            if expected=='halloween':
+                self.assertEqual(themed['time_of_day'],'night')
+                self.assertIn('orange horizon',themed['negative'])
+
     def test_weather_scene_retains_lighting_and_negative_preset(self):
         stamp=datetime.fromisoformat('2026-10-31T18:00:00+00:00').timestamp()
         data={'current':{'time':stamp,'temperature_2m':65,'weather_code':61,'is_day':1,'cloud_cover':100,'precipitation':2}}
