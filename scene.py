@@ -169,7 +169,7 @@ def moon_visible(moon, cloud, opaque, daypart):
             cloud is not None and cloud < 70 and not opaque and daypart in ('night','twilight','blue hour'))
 
 
-def weather_preview(location, fetch=fetch_json, *, scene_kind='rural', observation=None):
+def weather_preview(location, fetch=fetch_json, *, scene_kind='rural', observation=None, calendar_settings=None, calendar_context=None):
     if scene_kind not in ('rural', 'urban', 'townpark', 'woodland', 'river'):
         raise ValueError('Unknown scene kind')
     data = forecast(location, fetch)
@@ -187,8 +187,11 @@ def weather_preview(location, fetch=fetch_json, *, scene_kind='rural', observati
     if type(temp) not in (int,float) or not math.isfinite(temp): raise ValueError('Invalid temperature')
     if current['is_day'] not in (0,1): raise ValueError('Missing day/night evidence')
     local = datetime.fromtimestamp(observed, ZoneInfo(location['timezone']))
-    season = ('winter','spring','summer','autumn')[(local.month%12)//3]
-    if location['latitude'] < 0: season = {'winter':'summer','spring':'autumn','summer':'winter','autumn':'spring'}[season]
+    from calendar_context import resolve_calendar
+    from holiday_prompt import decorate
+    calendar_settings = calendar_settings or {}
+    context = calendar_context if calendar_context is not None else resolve_calendar(datetime.fromtimestamp(time.time(),timezone.utc),location,calendar_settings)
+    season = context['season']
     cloud = current.get('cloud_cover')
     precip = current.get('precipitation')
     for name, value, maximum in (('cloud cover', cloud, 100), ('precipitation', precip, None)):
@@ -267,8 +270,8 @@ def weather_preview(location, fetch=fetch_json, *, scene_kind='rural', observati
     positive = (f"Photorealistic weather-inspired landscape near {location['town']}, {location['state']}, "
                 f"during {season} at {daylight}. {anchor} {weather.capitalize()}, {temp:g} degrees F. "
                 f"{lighting}{weather_visual}One perspective, one horizon, natural proportions, no readable signs.")
-    return {'positive':positive, 'negative':negative, 'weather_evidence':evidence, 'observed_at':observed, 'weather':weather,
+    return decorate({'positive':positive, 'negative':negative, 'weather_evidence':evidence, 'observed_at':observed, 'weather':weather,
             'temperature_f':temp, 'season':season, 'time_of_day':daylight,
             'moon_policy':'permitted above horizon in open sky' if visible else 'omitted: horizon, phase, daylight or weather visibility gate',
             'prompt_version':PROMPT_VERSION, 'image_url':'',
-            'notice':'Prompt/geometry preview only — no image rendered and no wallpaper changed'}
+            'notice':'Prompt/geometry preview only — no image rendered and no wallpaper changed'}, context, calendar_settings)
