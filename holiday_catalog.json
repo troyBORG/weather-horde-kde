@@ -1,0 +1,1013 @@
+{
+  "schema_version": 1,
+  "version": "2026.1",
+  "review_after": "2027-01-01",
+  "sources": [
+    {
+      "id": "iowa",
+      "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+      "sha256": "b4a3d86a0373a859d44b4c72b05b1400b5442822b5aac15dd444e2351fc57fca",
+      "retrieved_at": "2026-11-01T02:34:23.464521+00:00",
+      "version": "Iowa Code 2026",
+      "hash_scope": "web_extract text (not original document bytes)"
+    },
+    {
+      "id": "opm",
+      "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+      "sha256": "d8e6a4a1b85e5f3c17518f6391391652cc6213ed92538d681cc723fa22d0ea31",
+      "retrieved_at": "2026-11-01T02:34:23.518551+00:00",
+      "version": "retrieved extracted page",
+      "hash_scope": "web_extract text (not original document bytes)"
+    },
+    {
+      "id": "cultural",
+      "source_url": "https://www.timeanddate.com/holidays/us/2026",
+      "sha256": "e8bfaef6a08ac348bd2f98ac0d5bed4776c878593a87323e213fa67ccaaa9bc0",
+      "retrieved_at": "2026-11-01T02:34:23.565237+00:00",
+      "version": "retrieved extracted page",
+      "hash_scope": "web_extract text (not original document bytes)"
+    },
+    {
+      "id": "halloween",
+      "source_url": "https://www.timeanddate.com/holidays/us/halloween",
+      "sha256": "a7f545cd988ae7e31eb1d9f2718ff9a956f1da824980d28da64c3579407c45ac",
+      "retrieved_at": "2026-11-01T02:34:23.597095+00:00",
+      "version": "retrieved extracted page",
+      "hash_scope": "web_extract text (not original document bytes)"
+    }
+  ],
+  "events": [
+    {
+      "id": "us_new_year",
+      "name": "New Year's Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 1,
+        "day": 1
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": "celebration",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "federal_public_holiday",
+          "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+          "section": "5 USC 6103(a)"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "legal_public_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.1"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "paid_employee_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.2"
+        }
+      ]
+    },
+    {
+      "id": "us_mlk",
+      "name": "Birthday of Martin Luther King, Jr.",
+      "rule": {
+        "kind": "nth_weekday",
+        "month": 1,
+        "weekday": 0,
+        "n": 3
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": "remembrance",
+      "priority": 30,
+      "default_enabled": false,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "federal_public_holiday",
+          "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+          "section": "5 USC 6103(a)"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "legal_public_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.1"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "paid_employee_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.2"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.9"
+        }
+      ]
+    },
+    {
+      "id": "us_washington",
+      "name": "Washington's Birthday",
+      "rule": {
+        "kind": "nth_weekday",
+        "month": 2,
+        "weekday": 0,
+        "n": 3
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": null,
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "federal_public_holiday",
+          "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+          "section": "5 USC 6103(a)"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "legal_public_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.1"
+        }
+      ],
+      "aliases": [
+        "Presidents' Day"
+      ]
+    },
+    {
+      "id": "us_memorial",
+      "name": "Memorial Day",
+      "rule": {
+        "kind": "last_weekday",
+        "month": 5,
+        "weekday": 0
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": "remembrance",
+      "priority": 30,
+      "default_enabled": false,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "federal_public_holiday",
+          "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+          "section": "5 USC 6103(a)"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "legal_public_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.1"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "paid_employee_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.2"
+        }
+      ]
+    },
+    {
+      "id": "us_juneteenth",
+      "name": "Juneteenth National Independence Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 6,
+        "day": 19
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": "community",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "federal_public_holiday",
+          "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+          "section": "5 USC 6103(a)"
+        }
+      ]
+    },
+    {
+      "id": "us_independence",
+      "name": "Independence Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 7,
+        "day": 4
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": "patriotic",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "federal_public_holiday",
+          "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+          "section": "5 USC 6103(a)"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "legal_public_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.1"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "paid_employee_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.2"
+        }
+      ]
+    },
+    {
+      "id": "us_labor",
+      "name": "Labor Day",
+      "rule": {
+        "kind": "nth_weekday",
+        "month": 9,
+        "weekday": 0,
+        "n": 1
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": "community",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "federal_public_holiday",
+          "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+          "section": "5 USC 6103(a)"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "legal_public_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.1"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "paid_employee_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.2"
+        }
+      ]
+    },
+    {
+      "id": "us_columbus",
+      "name": "Columbus Day",
+      "rule": {
+        "kind": "nth_weekday",
+        "month": 10,
+        "weekday": 0,
+        "n": 2
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": null,
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "federal_public_holiday",
+          "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+          "section": "5 USC 6103(a)"
+        }
+      ]
+    },
+    {
+      "id": "us_veterans",
+      "name": "Veterans Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 11,
+        "day": 11
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": "remembrance",
+      "priority": 30,
+      "default_enabled": false,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "federal_public_holiday",
+          "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+          "section": "5 USC 6103(a)"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "legal_public_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.1"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "paid_employee_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.2"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.6"
+        }
+      ]
+    },
+    {
+      "id": "us_thanksgiving",
+      "name": "Thanksgiving Day",
+      "rule": {
+        "kind": "nth_weekday",
+        "month": 11,
+        "weekday": 3,
+        "n": 4
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": "harvest",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "federal_public_holiday",
+          "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+          "section": "5 USC 6103(a)"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "legal_public_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.1"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "paid_employee_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.2"
+        }
+      ]
+    },
+    {
+      "id": "us_christmas",
+      "name": "Christmas Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 12,
+        "day": 25
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": "christmas",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "federal_public_holiday",
+          "source_url": "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/",
+          "section": "5 USC 6103(a)"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "legal_public_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.1"
+        },
+        {
+          "jurisdiction": "US-IA",
+          "category": "paid_employee_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.2"
+        }
+      ]
+    },
+    {
+      "id": "ia_lincoln",
+      "name": "Lincoln's Birthday",
+      "rule": {
+        "kind": "fixed",
+        "month": 2,
+        "day": 12
+      },
+      "observed_policy": "none",
+      "theme_id": null,
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "legal_public_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.1"
+        }
+      ]
+    },
+    {
+      "id": "ia_friday_after_thanksgiving",
+      "name": "Friday after Thanksgiving",
+      "rule": {
+        "kind": "offset",
+        "base": {
+          "kind": "nth_weekday",
+          "month": 11,
+          "weekday": 3,
+          "n": 4
+        },
+        "days": 1
+      },
+      "observed_policy": "nearest_weekday",
+      "theme_id": null,
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "paid_employee_holiday",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.2"
+        }
+      ]
+    },
+    {
+      "id": "ia_mothers_day",
+      "name": "Mother's Day",
+      "rule": {
+        "kind": "nth_weekday",
+        "month": 5,
+        "weekday": 6,
+        "n": 2
+      },
+      "observed_policy": "none",
+      "theme_id": "flowers",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.3"
+        }
+      ]
+    },
+    {
+      "id": "ia_fathers_day",
+      "name": "Father's Day",
+      "rule": {
+        "kind": "nth_weekday",
+        "month": 6,
+        "weekday": 6,
+        "n": 3
+      },
+      "observed_policy": "none",
+      "theme_id": "community",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.3"
+        }
+      ]
+    },
+    {
+      "id": "ia_independence_sunday",
+      "name": "Independence Sunday",
+      "rule": {
+        "kind": "on_or_before",
+        "month": 7,
+        "day": 4,
+        "weekday": 6
+      },
+      "observed_policy": "none",
+      "theme_id": null,
+      "priority": 30,
+      "default_enabled": false,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.4"
+        }
+      ]
+    },
+    {
+      "id": "ia_columbus_recognition",
+      "name": "Columbus Day (Iowa recognition)",
+      "rule": {
+        "kind": "fixed",
+        "month": 10,
+        "day": 12
+      },
+      "observed_policy": "none",
+      "theme_id": null,
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.5"
+        }
+      ]
+    },
+    {
+      "id": "ia_youth_honor_day",
+      "name": "Youth Honor Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 10,
+        "day": 31
+      },
+      "observed_policy": "none",
+      "theme_id": "community",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.7"
+        }
+      ]
+    },
+    {
+      "id": "ia_herbert_hoover",
+      "name": "Herbert Hoover Day",
+      "rule": {
+        "kind": "nearest_weekday",
+        "month": 8,
+        "day": 10,
+        "weekday": 6
+      },
+      "observed_policy": "none",
+      "theme_id": null,
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.8"
+        }
+      ]
+    },
+    {
+      "id": "ia_arbor_day",
+      "name": "Arbor Day",
+      "rule": {
+        "kind": "last_weekday",
+        "month": 4,
+        "weekday": 4
+      },
+      "observed_policy": "none",
+      "theme_id": "nature",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.10"
+        }
+      ]
+    },
+    {
+      "id": "ia_arbor_week",
+      "name": "Arbor Week",
+      "rule": {
+        "kind": "week",
+        "base": {
+          "kind": "last_weekday",
+          "month": 4,
+          "weekday": 4
+        },
+        "week_start": 6
+      },
+      "observed_policy": "none",
+      "theme_id": "nature",
+      "priority": 30,
+      "default_enabled": false,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.10"
+        }
+      ]
+    },
+    {
+      "id": "ia_state_flag",
+      "name": "Iowa State Flag Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 3,
+        "day": 29
+      },
+      "observed_policy": "none",
+      "theme_id": "iowa_colors",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.11"
+        }
+      ]
+    },
+    {
+      "id": "ia_borlaug",
+      "name": "Dr. Norman E. Borlaug World Food Prize Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 10,
+        "day": 16
+      },
+      "observed_policy": "none",
+      "theme_id": null,
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.12"
+        }
+      ]
+    },
+    {
+      "id": "ia_bill_of_rights",
+      "name": "Bill of Rights Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 12,
+        "day": 15
+      },
+      "observed_policy": "none",
+      "theme_id": null,
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.13"
+        }
+      ]
+    },
+    {
+      "id": "ia_juneteenth",
+      "name": "Juneteenth National Freedom Day (Iowa)",
+      "rule": {
+        "kind": "nth_weekday",
+        "month": 6,
+        "weekday": 5,
+        "n": 3
+      },
+      "observed_policy": "none",
+      "theme_id": "community",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.14"
+        }
+      ]
+    },
+    {
+      "id": "ia_gift_future",
+      "name": "Gift to Iowa's Future Recognition Day",
+      "rule": {
+        "kind": "nth_weekday",
+        "month": 4,
+        "weekday": 0,
+        "n": 1
+      },
+      "observed_policy": "none",
+      "theme_id": "nature",
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.15"
+        }
+      ]
+    },
+    {
+      "id": "ia_purple_heart",
+      "name": "Purple Heart Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 8,
+        "day": 7
+      },
+      "observed_policy": "none",
+      "theme_id": "remembrance",
+      "priority": 30,
+      "default_enabled": false,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.16"
+        }
+      ]
+    },
+    {
+      "id": "ia_carver",
+      "name": "George Washington Carver Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 2,
+        "day": 1
+      },
+      "observed_policy": "none",
+      "theme_id": null,
+      "priority": 30,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US-IA",
+          "category": "statutory_recognition",
+          "source_url": "https://www.legis.iowa.gov/docs/code/1c.pdf",
+          "section": "1C.17"
+        }
+      ]
+    },
+    {
+      "id": "us_halloween",
+      "name": "Halloween",
+      "rule": {
+        "kind": "fixed",
+        "month": 10,
+        "day": 31
+      },
+      "observed_policy": "none",
+      "theme_id": "halloween",
+      "priority": 100,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/halloween",
+          "section": "date listing"
+        }
+      ]
+    },
+    {
+      "id": "us_valentine",
+      "name": "Valentine's Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 2,
+        "day": 14
+      },
+      "observed_policy": "none",
+      "theme_id": "flowers",
+      "priority": 40,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
+        }
+      ]
+    },
+    {
+      "id": "us_st_patrick",
+      "name": "St. Patrick's Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 3,
+        "day": 17
+      },
+      "observed_policy": "none",
+      "theme_id": "green_ribbons",
+      "priority": 40,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
+        }
+      ]
+    },
+    {
+      "id": "us_earth",
+      "name": "Earth Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 4,
+        "day": 22
+      },
+      "observed_policy": "none",
+      "theme_id": "nature",
+      "priority": 40,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
+        }
+      ]
+    },
+    {
+      "id": "us_flag",
+      "name": "Flag Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 6,
+        "day": 14
+      },
+      "observed_policy": "none",
+      "theme_id": "patriotic",
+      "priority": 40,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
+        }
+      ]
+    },
+    {
+      "id": "us_christmas_eve",
+      "name": "Christmas Eve",
+      "rule": {
+        "kind": "fixed",
+        "month": 12,
+        "day": 24
+      },
+      "observed_policy": "none",
+      "theme_id": "christmas",
+      "priority": 40,
+      "default_enabled": false,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
+        }
+      ]
+    },
+    {
+      "id": "us_new_year_eve",
+      "name": "New Year's Eve",
+      "rule": {
+        "kind": "fixed",
+        "month": 12,
+        "day": 31
+      },
+      "observed_policy": "none",
+      "theme_id": "celebration",
+      "priority": 40,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
+        }
+      ]
+    },
+    {
+      "id": "us_election",
+      "name": "Election Day",
+      "rule": {
+        "kind": "offset",
+        "base": {
+          "kind": "nth_weekday",
+          "month": 11,
+          "weekday": 0,
+          "n": 1
+        },
+        "days": 1
+      },
+      "observed_policy": "none",
+      "theme_id": null,
+      "priority": 40,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
+        }
+      ]
+    },
+    {
+      "id": "us_native_heritage",
+      "name": "Native American Heritage Day",
+      "rule": {
+        "kind": "offset",
+        "base": {
+          "kind": "nth_weekday",
+          "month": 11,
+          "weekday": 3,
+          "n": 4
+        },
+        "days": 1
+      },
+      "observed_policy": "none",
+      "theme_id": null,
+      "priority": 40,
+      "default_enabled": true,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
+        }
+      ]
+    },
+    {
+      "id": "us_patriot",
+      "name": "Patriot Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 9,
+        "day": 11
+      },
+      "observed_policy": "none",
+      "theme_id": "remembrance",
+      "priority": 40,
+      "default_enabled": false,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
+        }
+      ]
+    },
+    {
+      "id": "us_pearl_harbor",
+      "name": "Pearl Harbor Remembrance Day",
+      "rule": {
+        "kind": "fixed",
+        "month": 12,
+        "day": 7
+      },
+      "observed_policy": "none",
+      "theme_id": "remembrance",
+      "priority": 40,
+      "default_enabled": false,
+      "classifications": [
+        {
+          "jurisdiction": "US",
+          "category": "cultural_observance",
+          "source_url": "https://www.timeanddate.com/holidays/us/2026",
+          "section": "date listing"
+        }
+      ]
+    }
+  ],
+  "exclusions": [
+    "Inauguration Day: limited DC employee scope, not national",
+    "Indigenous Peoples' Day: jurisdiction/proclamation not verified",
+    "Easter and optional faith packs (Hanukkah, Passover, Rosh Hashanah, Yom Kippur, Ramadan/Eids, Diwali, Lunar New Year, Kwanzaa): date methods/boundaries not verified; inactive",
+    "Iowa statehood, Beggars' Night, state fair, municipal and one-time proclamations: not verified"
+  ]
+}
