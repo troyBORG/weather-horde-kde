@@ -615,7 +615,7 @@ PlasmoidItem {
                     }
                     Label { objectName: "calendarSummary"; text: root.calendarSummary; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     Label { text: root.imageCalendarSummary + " — independent of current prompt; not proof of displayed wallpaper"; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                    CheckBox { id: calendarOptions; text: "Season and holiday options" }
+                    CheckBox { id: calendarOptions; objectName: "calendarOptionsToggle"; text: "Season and holiday options" }
                     ColumnLayout {
                         visible: calendarOptions.checked; Layout.fillWidth: true
                         Switch { objectName: "seasonalThemesToggle"; text: "Seasonal vegetation styling"; checked: root.calendarSettings.seasonal_themes === true; enabled: root.online && !root.busy && root.calendarSettings.seasonal_themes !== undefined; onClicked: root.saveSettings({seasonal_themes:checked}) }

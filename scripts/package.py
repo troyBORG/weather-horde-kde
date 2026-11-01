@@ -22,7 +22,7 @@ with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
         z.write(root/name,'contents/data/'+name)
 # Backend runtime artifact includes data beside modules; no cwd dependency.
 with zipfile.ZipFile(artifacts/'weather-horde-controller.zip','w',zipfile.ZIP_DEFLATED) as z:
-    for file in sorted([*root.glob('*.py'), *root.glob('holiday*.json')]):
+    for file in sorted([*root.glob('*.py'), *root.glob('holiday*.json'),root/'ASTRONOMY-LICENSE.txt',root/'ASTRONOMY-PROVENANCE.json',root/'README.md']):
         z.write(file,file.name)
     for directory in ('licenses','scripts','docs'):
         for file in sorted((root/directory).rglob('*')):

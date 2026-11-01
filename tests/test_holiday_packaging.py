@@ -26,5 +26,6 @@ class HolidayPackagingTests(unittest.TestCase):
                 self.assertIn('contents/data/'+name,archive.namelist())
                 self.assertEqual(archive.read('contents/data/'+name),(ROOT/name).read_bytes())
         with zipfile.ZipFile(ROOT/'artifacts/weather-horde-controller.zip') as archive:
-            for name in ('calendar_context.py','holiday_prompt.py','holiday_catalog.json','holiday_themes.json'):
+            for name in ('ASTRONOMY-LICENSE.txt','ASTRONOMY-PROVENANCE.json','calendar_context.py','holiday_prompt.py','holiday_catalog.json','holiday_themes.json'):
+                self.assertIn(name,archive.namelist(),'runtime dependency license/data missing')
                 self.assertEqual(archive.read(name),(ROOT/name).read_bytes())
