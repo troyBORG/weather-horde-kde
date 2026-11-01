@@ -20,7 +20,7 @@ class HolidayRefreshTests(unittest.TestCase):
         self.assertFalse(result_fresh(scene,after,3600,'night',new))
         self.assertTrue(result_fresh(scene,before,3600,'night',old))
         with tempfile.TemporaryDirectory() as d:
-            c=Controller(d); c.settings.update(location=LOCATION,holiday_themes=True,catch_up_refresh=True,automation_enabled=True)
+            c=Controller(d); c.settings.update(location=LOCATION,holiday_themes=True,seasonal_themes=True,catch_up_refresh=True,automation_enabled=True)
             c.scheduler.success={'prompt_preview':{'prompt':before}}
             c.calendar_success={'prompt_preview':{'prompt':old['context_hash']}}
             with patch.object(c.session_activity,'poll',return_value=False),patch.object(c,'build_preview') as build:
@@ -69,6 +69,49 @@ class HolidayRefreshTests(unittest.TestCase):
             self.assertEqual(Controller(d).calendar_success,c.calendar_success)
             c.refresh_complete('L','cancelled',2)
             self.assertEqual(c.scheduler.success['image_preview']['L'],1)
+
+    def test_restart_recovers_calendar_from_durable_apply_before_scheduler_save(self):
+        from pathlib import Path
+        import json,io,time
+        from PIL import Image
+        from test_wallpaper import Backend
+        from wallpaper import WallpaperManager
+        with tempfile.TemporaryDirectory() as d:
+            c=Controller(d,checkpoint='fixture')
+            data=io.BytesIO(); Image.new('RGB',(64,128),'navy').save(data,'PNG')
+            record=c.store.save(data.getvalue(),(64,128),{'generated_at':time.time(),'targets':['L'],'scene':{'calendar_context_hash':'durable-calendar'}})
+            (Path(d)/'previews-by-target.json').write_text(json.dumps({'L':record['id']}))
+            manager=WallpaperManager(Path(d),Backend())
+            manager.apply({'id':'L','width':64,'height':128,'scale':1,'x':0,'y':0},record['id'],lambda:'safe')
+            restored=Controller(d,checkpoint='fixture')
+            self.assertEqual(restored.calendar_success.get('image_wallpaper',{}).get('L'),'durable-calendar')
+            self.assertEqual(restored.calendar_success.get('image_preview',{}).get('L'),'durable-calendar')
+
+    def test_game_exit_calendar_catchup_waits_full_grace_and_targets_only_stale(self):
+        from unittest.mock import Mock
+        before=datetime.fromisoformat('2026-11-01T04:59:59+00:00').timestamp()
+        now=before+2
+        old=resolve_calendar(datetime.fromtimestamp(before).astimezone(),LOCATION,{'holiday_themes':True})
+        new=resolve_calendar(datetime.fromtimestamp(now).astimezone(),LOCATION,{'holiday_themes':True})
+        with tempfile.TemporaryDirectory() as d:
+            c=Controller(d,checkpoint='fixture.safetensors');c.settings.update(location=LOCATION,holiday_themes=True,seasonal_themes=True,automation_enabled=True,automation_kind='image_preview')
+            c.displays=[{'id':k,'width':512,'height':512} for k in ('L','R')]
+            c.scheduler.success={'image_preview':{'L':before,'R':now}}
+            c.calendar_success={'image_preview':{'L':old['context_hash'],'R':new['context_hash']}}
+            with patch.object(c.session_activity,'poll',return_value=True),patch.object(c,'dispatch',return_value={'state':'queued'}) as dispatch:
+                for elapsed in range(0,40,10):
+                    c.guard={'decision':'game_active','observed_at':now+elapsed}
+                    with patch('weather_controller.time.time',return_value=now+elapsed): c.tick(now+elapsed,elapsed)
+                dispatch.assert_not_called()
+                self.assertEqual(set(c.scheduler.pending),{'L'})
+                for elapsed in range(40,100,10):
+                    c.guard={'decision':'safe','observed_at':now+elapsed}
+                    with patch('weather_controller.time.time',return_value=now+elapsed): c.tick(now+elapsed,elapsed)
+                dispatch.assert_not_called()
+                c.guard={'decision':'safe','observed_at':now+100}
+                with patch('weather_controller.time.time',return_value=now+100): c.tick(now+100,100)
+                dispatch.assert_called_once()
+                self.assertEqual(c.scheduler.active['targets'],['L'])
 
     def test_batch_resolves_calendar_once_and_shares_it(self):
         stamp=datetime.fromisoformat('2026-11-01T04:59:59+00:00').timestamp()

@@ -99,6 +99,13 @@ class Controller:
         self.candidates = {}
         if (self.root / 'settings.json').exists():
             self.settings.update(json.loads((self.root / 'settings.json').read_text()))
+        self.calendar_settings_notice = ''
+        from holiday_settings import validate_settings
+        try:
+            validate_settings({k:self.settings[k] for k in DEFAULTS})
+        except (OSError,ValueError,KeyError,TypeError):
+            self.settings.update(copy.deepcopy(DEFAULTS))
+            self.calendar_settings_notice = 'Saved calendar preferences invalid or catalog unavailable; calendar styling disabled. Review calendar options.'
         # Restart/login begins a fresh saved interval, never an immediate catch-up
         # render and never the old hard-coded one-hour delay for 30-minute Auto.
         self.next_eligible_at = time.time() + self.settings['interval_minutes'] * 60
@@ -124,14 +131,25 @@ class Controller:
             stamp = record.get('generated_at')
             if type(stamp) in (int, float) and 0 < stamp <= time.time():
                 self.scheduler.success.setdefault('image_preview', {})[target] = stamp
+                if record.get('scene', {}).get('calendar_context_hash'):
+                    self.calendar_success.setdefault('image_preview', {})[target] = record['scene']['calendar_context_hash']
         # Recover a crash after durable compositor readback but before scheduler save.
         self.scheduler.success['image_wallpaper'] = {}
+        self.calendar_success['image_wallpaper'] = {}
         try:
             receipts = json.loads((self.root/'wallpaper-restore.json').read_text())
             for target, receipt in receipts.items():
                 stamp = receipt.get('applied_at')
                 if receipt.get('state') == 'applied' and type(stamp) in (int, float) and 0 < stamp <= time.time():
                     self.scheduler.success.setdefault('image_wallpaper', {})[target] = stamp
+                    identifier = receipt.get('preview_id','')
+                    if isinstance(identifier,str) and len(identifier)==32 and all(c in '0123456789abcdef' for c in identifier):
+                        try:
+                            image = json.loads((self.root/'renders'/identifier/'metadata.json').read_text())
+                            if image.get('id')==identifier and image.get('quarantined') is False and target in image.get('targets',[]):
+                                context_hash=image.get('scene',{}).get('calendar_context_hash')
+                                if context_hash: self.calendar_success['image_wallpaper'][target] = context_hash
+                        except (OSError,ValueError,TypeError): pass
         except (OSError, ValueError):
             pass
 
@@ -221,7 +239,7 @@ class Controller:
 
     def status(self):
         with self.lock:
-            return {**self.settings, 'calendar':self.calendar_now(), 'api_version': 1, 'service_version': SERVICE_VERSION,
+            return {**self.settings, 'calendar':self.calendar_now(), 'calendar_settings_notice':self.calendar_settings_notice, 'api_version': 1, 'service_version': SERVICE_VERSION,
                     'source_revision': SOURCE_REVISION, 'prompt_version':PROMPT_VERSION,
                     'catch_up_refresh': self.settings.get('catch_up_refresh', False),
                     'refresh': self.scheduler.status(time.monotonic()),

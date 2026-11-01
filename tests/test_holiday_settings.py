@@ -37,6 +37,17 @@ class HolidaySettingsTests(unittest.TestCase):
         self.assertEqual(loc.get('country_code'),'US')
         self.assertEqual(loc.get('subdivision_code'),'IA')
 
+    def test_malformed_saved_calendar_preferences_fail_closed_preserving_auto(self):
+        from pathlib import Path
+        import json
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d)/'settings.json').write_text(json.dumps({'holiday_priorities':[],'holiday_themes':True,'automation_enabled':True,'interval_minutes':30}))
+            c=Controller(d)
+            self.assertFalse(c.settings['holiday_themes'])
+            self.assertTrue(c.settings['automation_enabled'])
+            self.assertEqual(c.settings['interval_minutes'],30)
+            self.assertIn('invalid',c.status()['calendar_settings_notice'])
+
     def test_calendar_settings_validated_persisted_without_automation_changes(self):
         with tempfile.TemporaryDirectory() as d:
             c=Controller(d)
