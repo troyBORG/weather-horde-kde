@@ -105,9 +105,11 @@ class Controller:
         self.session_activity = SessionActivity()
         self.last_unlocked = None
         self.refresh_started = False
+        self.calendar_success = {}
         try:
             saved = json.loads((self.root/'refresh-state.json').read_text())
             self.scheduler.success = saved.get('success', {})
+            self.calendar_success = saved.get('calendar_success', {})
             self.scheduler.permanent_error = saved.get('permanent_error', '')
             if self.scheduler.permanent_error:
                 self.scheduler.fail(self.scheduler.permanent_error, retryable=False)
@@ -165,9 +167,15 @@ class Controller:
         return {'active':active, 'source':'Manual user observation' if active else 'Open-Meteo model current conditions',
                 'observation':dict(self.observation) if active else None}
 
-    def scene_preview(self, location, scene_kind=None, fetch=None):
+    def calendar_now(self, now=None):
+        from calendar_context import resolve_calendar
+        from datetime import datetime, timezone
+        return resolve_calendar(datetime.fromtimestamp(time.time() if now is None else now,timezone.utc),self.settings.get('location') or {},self.settings)
+
+    def scene_preview(self, location, scene_kind=None, fetch=None, calendar_context=None):
         kwargs = {'fetch':fetch} if fetch is not None else {}
         return weather_preview(location, scene_kind=scene_kind or self.settings.get('scene_kind','rural'),
+                               calendar_settings=self.settings, calendar_context=calendar_context,
                                observation=self.observation if self.observation_status()['active'] else None, **kwargs)
 
     def target_scene_previews(self, location, targets, *, generation=False):
@@ -177,6 +185,9 @@ class Controller:
         weather response across all scene variants within this batch.
         """
         responses, bases, result = {}, {}, []
+        from calendar_context import resolve_calendar
+        from datetime import datetime, timezone
+        calendar_context = resolve_calendar(datetime.fromtimestamp(time.time(),timezone.utc),location,self.settings)
         def fetch(url):
             if url not in responses: responses[url] = fetch_json(url)
             return responses[url]
@@ -193,7 +204,7 @@ class Controller:
                     actual = prior if prior in SCENE_KINDS else SCENE_KINDS[0]
                     provisional = prior not in SCENE_KINDS
             if generation: self.resolved_scenes[key] = actual
-            if actual not in bases: bases[actual] = self.scene_preview(location, actual, fetch)
+            if actual not in bases: bases[actual] = self.scene_preview(location, actual, fetch, calendar_context)
             composed = compose_for_target(bases[actual], target['width'], target['height'], self.settings.get('framing', 'auto'))
             composed['scene_selection'] = {'requested':requested, 'resolved':actual, 'provisional':provisional}
             result.append({'target':target, 'scene':composed})
@@ -389,13 +400,13 @@ class Controller:
                             for target in targets:
                                 if target["id"] not in ids: continue
                                 if guard() != "safe": raise ValueError("Automatic apply deferred: activity or automation settings changed")
-                                if refresh_id:
+                                if refresh_id or scene.get('calendar_context_hash'):
                                     from refresh_freshness import result_fresh
                                     from scene import solar_daypart, solar_elevation
                                     instant = time.time()
                                     daypart = solar_daypart(solar_elevation(instant, location['latitude'], location['longitude']))
-                                    if not result_fresh(scene, instant, self.settings['interval_minutes']*60, daypart):
-                                        raise ValueError('Stale scene: fresh weather/daypart render required')
+                                    if not result_fresh(scene, instant, self.settings['interval_minutes']*60, daypart, self.calendar_now(instant) if scene.get('calendar_context_hash') else None):
+                                        raise ValueError('Stale scene: fresh weather/daypart/calendar render required')
                                 try:
                                     applied = self.wallpaper.apply(target, result["id"], guard)
                                 except Exception as error:
@@ -495,11 +506,15 @@ class Controller:
         from wallpaper import atomic_json
         atomic_json(self.root/'refresh-state.json', {'success': self.scheduler.success,
                     'pending': {k: sorted(v) for k, v in self.scheduler.pending.items()},
+                    'calendar_success': self.calendar_success,
                     'permanent_error': self.scheduler.permanent_error})
 
     def refresh_complete(self, target, generation_id, at=None):
         with self.lock:
             if self.scheduler.complete(target, generation_id, time.time() if at is None else at):
+                scene = (self.preview or {}).get('scene', self.preview or {}) if target=='prompt' else self.previews_by_target.get(target, {}).get('scene', {})
+                if scene.get('calendar_context_hash'):
+                    self.calendar_success.setdefault(self.scheduler.mode, {})[target] = scene['calendar_context_hash']
                 self.refresh_event('apply_verified' if self.scheduler.mode == 'image_wallpaper' else 'preview_complete', generation_id=generation_id, target=target, mode=self.scheduler.mode)
                 self.save_refresh()
 
@@ -547,6 +562,10 @@ class Controller:
         reason = 'startup' if not self.refresh_started else 'unlock' if unlocked is True and self.last_unlocked is not True else 'interval'
         self.refresh_started, self.last_unlocked = True, unlocked
         s.reconcile(now, reason)
+        context = self.calendar_now(now)
+        if not context['notice']:
+            stale = [t for t in targets if self.calendar_success.get(s.mode, {}).get(t, context['context_hash']) != context['context_hash']]
+            s.request('calendar_change', stale)
         safe = self.guard.get('decision') == 'safe' and 0 <= time.time()-self.guard.get('observed_at', 0) <= 15
         s.observe_activity(safe, unlocked, monotonic_now)
         summary = (tuple(sorted(s.pending)), s.blocker, unlocked)
