@@ -690,6 +690,10 @@ class Controller:
                 locations = resolve_zip(body.get('zip'))
                 self.candidates = {secrets.token_urlsafe(24):(loc,time.time()) for loc in locations}
                 return {'candidates':[loc | {'confirmation_id':key} for key,(loc,_) in self.candidates.items()]}
+            if method == 'POST' and path == '/v1/calendar/preview':
+                from holiday_preview import fixture_preview
+                if set(body) != {'date'} or not self.settings.get('location'): raise ValueError('Confirmed location and preview date required')
+                return fixture_preview(body['date'],self.settings['location'])
             if method == 'POST' and path == '/v1/preview': return self.build_preview(body)
             if method == 'PUT' and path == '/v1/settings':
                 from holiday_settings import DEFAULTS, validate_settings

@@ -169,19 +169,20 @@ def moon_visible(moon, cloud, opaque, daypart):
             cloud is not None and cloud < 70 and not opaque and daypart in ('night','twilight','blue hour'))
 
 
-def weather_preview(location, fetch=fetch_json, *, scene_kind='rural', observation=None, calendar_settings=None, calendar_context=None):
+def weather_preview(location, fetch=fetch_json, *, scene_kind='rural', observation=None, calendar_settings=None, calendar_context=None, now_utc=None):
     if scene_kind not in ('rural', 'urban', 'townpark', 'woodland', 'river'):
         raise ValueError('Unknown scene kind')
+    instant = time.time() if now_utc is None else now_utc.timestamp()
     data = forecast(location, fetch)
     provider_current = dict(data['current'])
     current = dict(provider_current)
-    manual = bool(observation and observation['expires_at'] > time.time() and observation['location_zip'] == location['zip'])
+    manual = bool(observation and observation['expires_at'] > instant and observation['location_zip'] == location['zip'])
     if manual:
         current.update(time=observation['observed_at'], temperature_2m=observation['temperature_f'],
                        weather_code=observation['weather_code'], cloud_cover=observation['cloud_cover_percent'],
                        precipitation=observation['precipitation_mm'])
     observed = float(current['time'])
-    if not math.isfinite(observed) or not -300 <= time.time()-observed <= 7200:
+    if not math.isfinite(observed) or not -300 <= instant-observed <= 7200:
         raise ValueError('Weather is stale or has an invalid observation time')
     temp = current['temperature_2m']
     if type(temp) not in (int,float) or not math.isfinite(temp): raise ValueError('Invalid temperature')
@@ -190,7 +191,7 @@ def weather_preview(location, fetch=fetch_json, *, scene_kind='rural', observati
     from calendar_context import resolve_calendar
     from holiday_prompt import decorate
     calendar_settings = calendar_settings or {}
-    context = calendar_context if calendar_context is not None else resolve_calendar(datetime.fromtimestamp(time.time(),timezone.utc),location,calendar_settings)
+    context = calendar_context if calendar_context is not None else resolve_calendar(datetime.fromtimestamp(instant,timezone.utc),location,calendar_settings)
     season = context['season']
     cloud = current.get('cloud_cover')
     precip = current.get('precipitation')
@@ -203,7 +204,7 @@ def weather_preview(location, fetch=fetch_json, *, scene_kind='rural', observati
     opaque = current['weather_code'] not in (0, 1, 2) or (cloud is not None and cloud >= 90)
     if current['weather_code'] in (0, 1, 2) and opaque:
         weather = 'overcast skies'
-    astronomy_at = time.time()
+    astronomy_at = instant
     elevation = solar_elevation(astronomy_at, location['latitude'], location['longitude'])
     daylight = solar_daypart(elevation)
     moon = lunar_evidence(astronomy_at, location['latitude'], location['longitude'])
@@ -256,7 +257,7 @@ def weather_preview(location, fetch=fetch_json, *, scene_kind='rural', observati
                 'weather_code':current['weather_code'], 'temperature_f':temp, 'scene_kind':scene_kind,
                 'cloud_cover_percent':current.get('cloud_cover'),
                 'precipitation_mm':current.get('precipitation'),
-                'observed_at':observed, 'age_seconds':round(time.time()-observed, 1),
+                'observed_at':observed, 'age_seconds':round(instant-observed, 1),
                 'freshness':'within accepted window (-300 to 7200 seconds)',
                 'timezone':location['timezone'], 'local_time':local.isoformat(),
                 'provider_is_day':current['is_day'], 'daypart':daylight,
