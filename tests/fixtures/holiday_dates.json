@@ -1,0 +1,28 @@
+{
+  "provenance": {
+    "federal": "OPM 2026/2027/2028 table and weekend notes, https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/; actual July 4 is distinct from July 3 observed",
+    "iowa": "Iowa Code 2026 Chapter 1C sections 1-17, https://www.legis.iowa.gov/docs/code/1c.pdf; weekday dates independently cross-checked with Python calendar.monthcalendar, not resolver output",
+    "scope": "Regression fixtures, not an annual proclamation registry"
+  },
+  "actual": [
+    ["2026-01-01","us_new_year"], ["2026-01-19","us_mlk"],
+    ["2026-02-16","us_washington"], ["2026-05-25","us_memorial"],
+    ["2026-06-19","us_juneteenth"], ["2026-07-04","us_independence"],
+    ["2026-09-07","us_labor"], ["2026-10-12","us_columbus"],
+    ["2026-11-11","us_veterans"], ["2026-11-26","us_thanksgiving"],
+    ["2026-12-25","us_christmas"], ["2026-02-12","ia_lincoln"],
+    ["2026-11-27","ia_friday_after_thanksgiving"],
+    ["2026-05-10","ia_mothers_day"], ["2026-06-21","ia_fathers_day"],
+    ["2026-06-28","ia_independence_sunday"], ["2026-10-12","ia_columbus_recognition"],
+    ["2026-10-31","ia_youth_honor_day"], ["2026-08-09","ia_herbert_hoover"],
+    ["2023-08-13","ia_herbert_hoover"], ["2026-04-24","ia_arbor_day"],
+    ["2026-04-19","ia_arbor_week"], ["2026-04-25","ia_arbor_week"],
+    ["2026-03-29","ia_state_flag"], ["2026-10-16","ia_borlaug"],
+    ["2026-12-15","ia_bill_of_rights"], ["2026-06-20","ia_juneteenth"],
+    ["2026-04-06","ia_gift_future"], ["2026-08-07","ia_purple_heart"],
+    ["2026-02-01","ia_carver"], ["2025-10-12","ia_columbus_recognition"],
+    ["2025-10-13","us_columbus"], ["2026-10-31","us_halloween"]
+  ],
+  "absent": [["2026-11-01","us_halloween"],["2026-06-19","ia_juneteenth"],["2026-06-20","us_juneteenth"],["2025-10-12","us_columbus"],["2025-10-13","ia_columbus_recognition"],["2026-04-26","ia_arbor_week"]],
+  "observed": [["2026-07-03","us_independence","2026-07-04"],["2027-12-31","us_new_year","2028-01-01"]]
+}

@@ -34,6 +34,14 @@
       "retrieved_at": "2026-11-01T02:34:23.597095+00:00",
       "version": "retrieved extracted page",
       "hash_scope": "web_extract text (not original document bytes)"
+    },
+    {
+      "id": "noaa",
+      "source_url": "https://www.noaa.gov/education/multimedia/infographic/infographic-meteorological-and-astronomical-seasons",
+      "sha256": "6f8442d183d4fac99e28f05daa4cb4b87e2b08f89094e7869057d792872cd5f7",
+      "retrieved_at": "2026-11-01T02:47:30.333960+00:00",
+      "version": "retrieved extracted page",
+      "hash_scope": "web_extract text (not original document bytes)"
     }
   ],
   "events": [

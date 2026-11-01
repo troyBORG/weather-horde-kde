@@ -85,6 +85,22 @@ class CalendarTests(unittest.TestCase):
             for event in c['events']:
                 self.assertTrue(all(v['jurisdiction']!='US-IA' for v in event['classifications']))
 
+    def test_source_attributed_date_fixture_matrix(self):
+        import json
+        from pathlib import Path
+        from calendar_context import resolve_calendar
+        fixtures=json.loads((Path(__file__).parent/'fixtures/holiday_dates.json').read_text())
+        for day,event in fixtures['actual']:
+            with self.subTest(day=day,event=event):
+                c=resolve_calendar(datetime.fromisoformat(day+'T18:00:00+00:00'),LOCATION,SETTINGS)
+                self.assertIn(event,c['event_ids'])
+        for day,event in fixtures['absent']:
+            c=resolve_calendar(datetime.fromisoformat(day+'T18:00:00+00:00'),LOCATION,SETTINGS)
+            self.assertNotIn(event,c['event_ids'])
+        for day,event,actual in fixtures['observed']:
+            c=resolve_calendar(datetime.fromisoformat(day+'T18:00:00+00:00'),LOCATION,SETTINGS|{'holiday_date_mode':'observed'})
+            self.assertEqual(next(e for e in c['events'] if e['id']==event)['actual_date'],actual)
+
     def test_chicago_halloween_while_utc_is_november(self):
         self.assertIsNotNone(importlib.util.find_spec('calendar_context'), 'pure resolver missing')
         from calendar_context import resolve_calendar
