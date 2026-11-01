@@ -54,6 +54,29 @@ class CalendarTests(unittest.TestCase):
         self.assertFalse(resolve('2026-02-28T12:00:00+00:00',catalog=leap)['event_ids'])
         self.assertTrue(resolve('2028-02-29T12:00:00+00:00',catalog=leap)['event_ids'])
 
+    def test_theme_bytes_invalidate_context_and_malformed_data_fails_closed(self):
+        from calendar_context import resolve_calendar,load_catalog
+        from unittest.mock import patch
+        from pathlib import Path
+        import tempfile
+        import shutil
+        now=datetime.fromisoformat('2026-10-31T12:00:00+00:00')
+        root=Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as d:
+            d=Path(d)
+            for name in ('holiday_catalog.json','holiday_themes.json'): shutil.copy2(root/name,d/name)
+            with patch('calendar_context.ROOT',d):
+                a=resolve_calendar(now,LOCATION,SETTINGS)
+                (d/'holiday_themes.json').write_text((d/'holiday_themes.json').read_text()+' ')
+                b=resolve_calendar(now,LOCATION,SETTINGS)
+                self.assertNotEqual(a['context_hash'],b['context_hash'])
+                (d/'holiday_catalog.json').write_text('{bad')
+                c=resolve_calendar(now,LOCATION,SETTINGS)
+                self.assertIsNone(c['selected_theme']); self.assertIn('catalog',c['notice'])
+        for invalid in ([], {'schema_version':1,'version':'bad','events':[None]}, {'schema_version':1,'version':'bad','events':[{'id':'x'}]}):
+            c=resolve_calendar(now,LOCATION,SETTINGS,invalid)
+            self.assertTrue(c['notice']); self.assertIsNone(c['selected_theme'])
+
     def test_chicago_halloween_while_utc_is_november(self):
         self.assertIsNotNone(importlib.util.find_spec('calendar_context'), 'pure resolver missing')
         from calendar_context import resolve_calendar

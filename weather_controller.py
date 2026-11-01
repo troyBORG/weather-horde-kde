@@ -18,7 +18,7 @@ SERVICE_VERSION = "0.1.10"
 # Include local runtime modules: a safety-only fix must invalidate old handshakes.
 SOURCE_REVISION = hashlib.sha256(b''.join(
     path.name.encode() + b'\0' + path.read_bytes() + b'\0'
-    for path in sorted(Path(__file__).resolve().parent.glob('*.py'))
+    for path in sorted([*Path(__file__).resolve().parent.glob('*.py'), *Path(__file__).resolve().parent.glob('holiday*.json')])
 )).hexdigest()
 
 SCENE_KINDS = ('rural', 'townpark', 'woodland', 'urban', 'river')

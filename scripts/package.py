@@ -18,6 +18,15 @@ archive=artifacts/'org.troyborg.weatherhorde.plasmoid'
 with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
     for file in sorted(package.rglob('*')):
         if file.is_file(): z.write(file,file.relative_to(package))
+    for name in ('holiday_catalog.json','holiday_themes.json'):
+        z.write(root/name,'contents/data/'+name)
+# Backend runtime artifact includes data beside modules; no cwd dependency.
+with zipfile.ZipFile(artifacts/'weather-horde-controller.zip','w',zipfile.ZIP_DEFLATED) as z:
+    for file in sorted([*root.glob('*.py'), *root.glob('holiday*.json')]):
+        z.write(file,file.name)
+    for directory in ('licenses','scripts','docs'):
+        for file in sorted((root/directory).rglob('*')):
+            if file.is_file() and '__pycache__' not in file.parts: z.write(file,file.relative_to(root))
 # kpackagetool6 upgrade discovery may ignore an isolated packageroot. Always
 # validate in a fresh project-local root; retain previous staged packages.
 import tempfile

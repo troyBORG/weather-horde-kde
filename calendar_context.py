@@ -60,7 +60,10 @@ def resolve_calendar(now_utc, location, settings, catalog=None):
     try:
         catalog=load_catalog() if catalog is None else catalog
         if catalog['schema_version'] != 1: raise ValueError('schema')
-        digest=hashlib.sha256(json.dumps(catalog,sort_keys=True).encode()).hexdigest()
+        theme_bytes=(ROOT/'holiday_themes.json').read_bytes()
+        theme_data=json.loads(theme_bytes)
+        if not isinstance(theme_data['themes'],dict): raise ValueError('themes')
+        digest=hashlib.sha256(json.dumps(catalog,sort_keys=True).encode()+b'\0'+theme_bytes).hexdigest()
         result['catalog_version']=catalog['version']
         ids=set()
         for event in catalog['events']:
