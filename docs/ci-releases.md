@@ -21,6 +21,12 @@ loopback HTTP and private D-Bus are used. Dependency installation happens in a
 separate network-enabled image build. No services are enabled, no wallpaper is
 changed, and this is not deployment or live GPU acceptance.
 
+The image also supplies private container-local `/run/user/1001` for installer
+fixtures that enforce the real owner-session runtime path. It contains no host
+socket or running user manager. Systemd manual pages and `man-db` are retained
+because real `systemd-analyze verify` checks documentation references as well as
+unit syntax; the default minimal Arch image excludes those pages.
+
 Checks build the native token reader/plugin with assertions enabled in its
 boundary test, install/read back a fresh KPackage root, run standard full
 unittest discovery (including the native offscreen Plasma/QML HTTP harness),

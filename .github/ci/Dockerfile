@@ -9,6 +9,9 @@ RUN printf 'Server = https://archive.archlinux.org/repos/2026/11/01/$repo/os/$ar
     && pacman -Scc --noconfirm \
     && useradd --create-home --uid 1001 ci \
     && chmod 700 /home/ci
+# Installer fixtures deliberately exercise the exact /run/user/<uid> preflight.
+# Supply a private container-local runtime, never a host user-manager socket.
+RUN install -d -o ci -g ci -m 700 /run/user/1001
 USER ci
 WORKDIR /home/ci
 ENV HOME=/home/ci PYTHONDONTWRITEBYTECODE=1
