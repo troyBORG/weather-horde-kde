@@ -68,6 +68,19 @@ Item {
    widget.fullRepresentationItem.contentItem.contentY=find(widget.fullRepresentationItem,"sceneControlsGroup").y
    step=6
   }else if(step===6){
+   const options=find(widget.fullRepresentationItem,"calendarOptionsToggle")
+   if(!options){fail("CALENDAR_OPTIONS_MISSING");return}
+   options.checked=true
+   const toggle=find(widget.fullRepresentationItem,"holidayThemesToggle")
+   toggle.checked=true;toggle.clicked();step=30
+  }else if(step===30 && widget.calendarSettings.holiday_themes===true){
+   const strength=find(widget.fullRepresentationItem,"holidayStrengthSelector")
+   strength.currentIndex=0;strength.activated(0);step=31
+  }else if(step===31 && widget.calendarSettings.theme_strength==="subtle"){
+   find(widget.fullRepresentationItem,"holidayPreviewDate").text="2026-10-31"
+   find(widget.fullRepresentationItem,"holidayPreviewButton").clicked();step=32
+  }else if(step===32 && widget.previewText.indexOf("fixture_weather")>=0){
+   if(widget.automationEnabled){fail("THEMES_ENABLED_AUTO");return}
    console.log("SCENE_QML_PASS");Qt.quit()
   }
  }}

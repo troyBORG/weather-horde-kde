@@ -18,7 +18,7 @@ SERVICE_VERSION = "0.1.11"
 # Include local runtime modules: a safety-only fix must invalidate old handshakes.
 SOURCE_REVISION = hashlib.sha256(b''.join(
     path.name.encode() + b'\0' + path.read_bytes() + b'\0'
-    for path in sorted(Path(__file__).resolve().parent.glob('*.py'))
+    for path in sorted([*Path(__file__).resolve().parent.glob('*.py'), *Path(__file__).resolve().parent.glob('holiday*.json')])
 )).hexdigest()
 
 SCENE_KINDS = ('rural', 'townpark', 'woodland', 'urban', 'river')
@@ -47,6 +47,9 @@ class Controller:
         self.override_deadline = 0.0
         self.override_generation = 0
         self.settings = {'automation_enabled': False, 'automation_kind': 'prompt_preview', 'automation_target':'all', 'interval_minutes': 60, 'location': None}
+        from holiday_settings import DEFAULTS
+        import copy
+        self.settings.update(copy.deepcopy(DEFAULTS))
         self.state = 'idle'
         self.last_error = ''
         self.guard = {'decision': 'unknown', 'observed_at': 0}
@@ -96,6 +99,13 @@ class Controller:
         self.candidates = {}
         if (self.root / 'settings.json').exists():
             self.settings.update(json.loads((self.root / 'settings.json').read_text()))
+        self.calendar_settings_notice = ''
+        from holiday_settings import validate_settings
+        try:
+            validate_settings({k:self.settings[k] for k in DEFAULTS})
+        except (OSError,ValueError,KeyError,TypeError):
+            self.settings.update(copy.deepcopy(DEFAULTS))
+            self.calendar_settings_notice = 'Saved calendar preferences invalid or catalog unavailable; calendar styling disabled. Review calendar options.'
         # Restart/login begins a fresh saved interval, never an immediate catch-up
         # render and never the old hard-coded one-hour delay for 30-minute Auto.
         self.next_eligible_at = time.time() + self.settings['interval_minutes'] * 60
@@ -105,12 +115,14 @@ class Controller:
         self.session_activity = SessionActivity()
         self.last_unlocked = None
         self.refresh_started = False
+        self.calendar_success = {}
         self.saved_refresh_intent = None
         try:
             saved = json.loads((self.root/'refresh-state.json').read_text())
             if saved.get('mode') == self.settings['automation_kind']:
                 self.saved_refresh_intent = saved.get('pending', {})
             self.scheduler.success = saved.get('success', {})
+            self.calendar_success = saved.get('calendar_success', {})
             self.scheduler.permanent_error = saved.get('permanent_error', '')
             if self.scheduler.permanent_error:
                 self.scheduler.fail(self.scheduler.permanent_error, retryable=False)
@@ -122,14 +134,25 @@ class Controller:
             stamp = record.get('generated_at')
             if type(stamp) in (int, float) and 0 < stamp <= time.time():
                 self.scheduler.success.setdefault('image_preview', {})[target] = stamp
+                if record.get('scene', {}).get('calendar_context_hash'):
+                    self.calendar_success.setdefault('image_preview', {})[target] = record['scene']['calendar_context_hash']
         # Recover a crash after durable compositor readback but before scheduler save.
         self.scheduler.success['image_wallpaper'] = {}
+        self.calendar_success['image_wallpaper'] = {}
         try:
             receipts = json.loads((self.root/'wallpaper-restore.json').read_text())
             for target, receipt in receipts.items():
                 stamp = receipt.get('applied_at')
                 if receipt.get('state') == 'applied' and type(stamp) in (int, float) and 0 < stamp <= time.time():
                     self.scheduler.success.setdefault('image_wallpaper', {})[target] = stamp
+                    identifier = receipt.get('preview_id','')
+                    if isinstance(identifier,str) and len(identifier)==32 and all(c in '0123456789abcdef' for c in identifier):
+                        try:
+                            image = json.loads((self.root/'renders'/identifier/'metadata.json').read_text())
+                            if image.get('id')==identifier and image.get('quarantined') is False and target in image.get('targets',[]):
+                                context_hash=image.get('scene',{}).get('calendar_context_hash')
+                                if context_hash: self.calendar_success['image_wallpaper'][target] = context_hash
+                        except (OSError,ValueError,TypeError): pass
         except (OSError, ValueError):
             pass
 
@@ -168,9 +191,15 @@ class Controller:
         return {'active':active, 'source':'Manual user observation' if active else 'Open-Meteo model current conditions',
                 'observation':dict(self.observation) if active else None}
 
-    def scene_preview(self, location, scene_kind=None, fetch=None):
+    def calendar_now(self, now=None):
+        from calendar_context import resolve_calendar
+        from datetime import datetime, timezone
+        return resolve_calendar(datetime.fromtimestamp(time.time() if now is None else now,timezone.utc),self.settings.get('location') or {},self.settings)
+
+    def scene_preview(self, location, scene_kind=None, fetch=None, calendar_context=None):
         kwargs = {'fetch':fetch} if fetch is not None else {}
         return weather_preview(location, scene_kind=scene_kind or self.settings.get('scene_kind','rural'),
+                               calendar_settings=self.settings, calendar_context=calendar_context,
                                observation=self.observation if self.observation_status()['active'] else None, **kwargs)
 
     def target_scene_previews(self, location, targets, *, generation=False):
@@ -180,6 +209,9 @@ class Controller:
         weather response across all scene variants within this batch.
         """
         responses, bases, result = {}, {}, []
+        from calendar_context import resolve_calendar
+        from datetime import datetime, timezone
+        calendar_context = resolve_calendar(datetime.fromtimestamp(time.time(),timezone.utc),location,self.settings)
         def fetch(url):
             if url not in responses: responses[url] = fetch_json(url)
             return responses[url]
@@ -196,7 +228,7 @@ class Controller:
                     actual = prior if prior in SCENE_KINDS else SCENE_KINDS[0]
                     provisional = prior not in SCENE_KINDS
             if generation: self.resolved_scenes[key] = actual
-            if actual not in bases: bases[actual] = self.scene_preview(location, actual, fetch)
+            if actual not in bases: bases[actual] = self.scene_preview(location, actual, fetch, calendar_context)
             composed = compose_for_target(bases[actual], target['width'], target['height'], self.settings.get('framing', 'auto'))
             composed['scene_selection'] = {'requested':requested, 'resolved':actual, 'provisional':provisional}
             result.append({'target':target, 'scene':composed})
@@ -210,7 +242,7 @@ class Controller:
 
     def status(self):
         with self.lock:
-            return {**self.settings, 'api_version': 1, 'service_version': SERVICE_VERSION,
+            return {**self.settings, 'calendar':self.calendar_now(), 'calendar_settings_notice':self.calendar_settings_notice, 'api_version': 1, 'service_version': SERVICE_VERSION,
                     'source_revision': SOURCE_REVISION, 'prompt_version':PROMPT_VERSION,
                     'catch_up_refresh': self.settings.get('catch_up_refresh', False),
                     'refresh': self.scheduler.status(time.monotonic()),
@@ -392,13 +424,13 @@ class Controller:
                             for target in targets:
                                 if target["id"] not in ids: continue
                                 if guard() != "safe": raise ValueError("Automatic apply deferred: activity or automation settings changed")
-                                if refresh_id:
+                                if refresh_id or scene.get('calendar_context_hash'):
                                     from refresh_freshness import result_fresh
                                     from scene import solar_daypart, solar_elevation
                                     instant = time.time()
                                     daypart = solar_daypart(solar_elevation(instant, location['latitude'], location['longitude']))
-                                    if not result_fresh(scene, instant, self.settings['interval_minutes']*60, daypart):
-                                        raise ValueError('Stale scene: fresh weather/daypart render required')
+                                    if not result_fresh(scene, instant, self.settings['interval_minutes']*60, daypart, self.calendar_now(instant) if scene.get('calendar_context_hash') else None):
+                                        raise ValueError('Stale scene: fresh weather/daypart/calendar render required')
                                 try:
                                     applied = self.wallpaper.apply(target, result["id"], guard)
                                 except Exception as error:
@@ -499,11 +531,15 @@ class Controller:
         atomic_json(self.root/'refresh-state.json', {'success': self.scheduler.success,
                     'mode': self.scheduler.mode,
                     'pending': {k: sorted(v) for k, v in self.scheduler.pending.items()},
+                    'calendar_success': self.calendar_success,
                     'permanent_error': self.scheduler.permanent_error})
 
     def refresh_complete(self, target, generation_id, at=None):
         with self.lock:
             if self.scheduler.complete(target, generation_id, time.time() if at is None else at):
+                scene = (self.preview or {}).get('scene', self.preview or {}) if target=='prompt' else self.previews_by_target.get(target, {}).get('scene', {})
+                if scene.get('calendar_context_hash'):
+                    self.calendar_success.setdefault(self.scheduler.mode, {})[target] = scene['calendar_context_hash']
                 self.refresh_event('apply_verified' if self.scheduler.mode == 'image_wallpaper' else 'preview_complete', generation_id=generation_id, target=target, mode=self.scheduler.mode)
                 self.save_refresh()
 
@@ -530,7 +566,7 @@ class Controller:
     def automatic_session_guard(self):
         if not self.settings['automation_enabled'] or self.override_status()['active']:
             return 'automation_changed'
-        if self.settings.get('catch_up_refresh', False):
+        if (self.settings.get('catch_up_refresh', False) or self.settings.get('holiday_themes', False) or self.settings.get('seasonal_themes', False)):
             unlocked = self.session_activity.poll()
             if unlocked is not True:
                 self.scheduler.observe_activity(False, unlocked, time.monotonic())
@@ -562,6 +598,10 @@ class Controller:
         if unlocked is not None: self.last_unlocked = unlocked
         if reason == 'unlock': s.request(reason, targets)
         s.reconcile(now, reason)
+        context = self.calendar_now(now)
+        if not context['notice']:
+            stale = [t for t in targets if self.calendar_success.get(s.mode, {}).get(t, context['context_hash']) != context['context_hash']]
+            s.request('calendar_change', stale)
         safe = self.guard.get('decision') == 'safe' and 0 <= time.time()-self.guard.get('observed_at', 0) <= 15
         s.observe_activity(safe, unlocked, monotonic_now)
         summary = (tuple(sorted(s.pending)), s.blocker, unlocked)
@@ -605,7 +645,7 @@ class Controller:
     def tick(self, now=None, monotonic_now=None):
         now = time.time() if now is None else now
         with self.lock:
-            if self.settings.get('catch_up_refresh', False):
+            if (self.settings.get('catch_up_refresh', False) or self.settings.get('holiday_themes', False) or self.settings.get('seasonal_themes', False)):
                 self.catchup_tick(now, time.monotonic() if monotonic_now is None else monotonic_now)
                 return
             if self.override_status()['active'] or not self.settings['automation_enabled'] or now < self.next_eligible_at: return
@@ -683,9 +723,15 @@ class Controller:
                 locations = resolve_zip(body.get('zip'))
                 self.candidates = {secrets.token_urlsafe(24):(loc,time.time()) for loc in locations}
                 return {'candidates':[loc | {'confirmation_id':key} for key,(loc,_) in self.candidates.items()]}
+            if method == 'POST' and path == '/v1/calendar/preview':
+                from holiday_preview import fixture_preview
+                if set(body) != {'date'} or not self.settings.get('location'): raise ValueError('Confirmed location and preview date required')
+                return fixture_preview(body['date'],self.settings['location'])
             if method == 'POST' and path == '/v1/preview': return self.build_preview(body)
             if method == 'PUT' and path == '/v1/settings':
-                if set(body) - {'catch_up_refresh','checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
+                from holiday_settings import DEFAULTS, validate_settings
+                validate_settings(body)
+                if set(body) - set(DEFAULTS) - {'catch_up_refresh','checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
                 if 'catch_up_refresh' in body and type(body['catch_up_refresh']) is not bool:
                     raise ValueError('catch_up_refresh must be boolean')
                 if 'comparison_seed' in body and body['comparison_seed'] is not None and (type(body['comparison_seed']) is not int or not 0 <= body['comparison_seed'] <= 4294967295): raise ValueError('Seed must be an unsigned 32-bit integer or null for random')
@@ -724,13 +770,13 @@ class Controller:
                 if update.get('automation_enabled') is True and self.override_status()['active']:
                     raise ValueError('Automation is paused during testing override')
                 self.settings.update(update)
-                if update:
+                if set(update) - {'holiday_preview_date'}:
                     self.saved_refresh_intent = None
                     self.scheduler.configure(False, self.settings['automation_kind'], [], self.settings['interval_minutes']*60)
                     self.refresh_started = False
                     self.save_refresh()
+                    self.next_eligible_at = time.time() + self.settings['interval_minutes']*60
                 if 'checkpoint' in update: self.checkpoint = update['checkpoint']
-                self.next_eligible_at = time.time() + self.settings['interval_minutes']*60
                 self.save()
                 return self.status()
             if method == 'POST' and (path == '/v1/apply' or (path == '/v1/restore' and self.wallpaper)):
@@ -802,7 +848,7 @@ class Controller:
                 if path == '/v1/render' and self.checkpoint:
                     targets = self.target_displays(body)
                     refresh_id = None
-                    if scheduled and self.settings.get('catch_up_refresh'):
+                    if scheduled and (self.settings.get('catch_up_refresh') or self.settings.get('holiday_themes') or self.settings.get('seasonal_themes')):
                         active = self.scheduler.active
                         if not active: return {'state':'deferred', 'reason':'No coordinator intent'}
                         refresh_id = active['generation_id']

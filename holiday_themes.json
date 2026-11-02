@@ -1,0 +1,16 @@
+{
+  "version": "2026.1",
+  "themes": {
+    "halloween": {"urban": "A few carved pumpkins and restrained orange ribbons on existing storefronts", "natural": "A small group of carved pumpkins beside the existing path or clearing", "tone": "celebration"},
+    "christmas": {"urban": "Small evergreen wreaths and restrained red ribbons on existing storefronts", "natural": "One small evergreen wreath with a red ribbon beside the existing clearing", "tone": "celebration"},
+    "harvest": {"urban": "A small basket of gourds at an existing doorway", "natural": "A small basket of gourds beside the existing path", "tone": "celebration"},
+    "flowers": {"urban": "A modest arrangement of cut flowers beside an existing doorway", "natural": "A small arrangement of cut flowers beside the existing path", "tone": "celebration"},
+    "nature": {"urban": "A small locally appropriate sapling in a planter beside an existing doorway", "natural": "A small locally appropriate sapling near the existing path", "tone": "recognition"},
+    "iowa_colors": {"urban": "A few plain blue, white and red ribbons at an existing doorway, color tribute only, not a literal state flag", "natural": "A small plain blue, white and red ribbon arrangement beside the path, color tribute only, not a literal state flag", "tone": "recognition"},
+    "patriotic": {"urban": "Restrained plain red, white and blue ribbons on existing railings, no literal flag", "natural": "A small plain red, white and blue ribbon arrangement beside the path, no literal flag", "tone": "celebration"},
+    "community": {"urban": "A modest arrangement of colorful plain ribbons at an existing doorway", "natural": "A small arrangement of colorful plain ribbons beside the existing path", "tone": "recognition"},
+    "celebration": {"urban": "A few plain gold ribbons at an existing doorway", "natural": "A small arrangement of plain gold ribbons beside the existing path", "tone": "celebration"},
+    "green_ribbons": {"urban": "A few plain green ribbons at an existing doorway", "natural": "A small arrangement of plain green ribbons beside the existing path", "tone": "celebration"},
+    "remembrance": {"urban": "One understated wreath at an existing doorway, quiet respectful commemoration, no party decorations", "natural": "One understated wreath beside the existing path, quiet respectful commemoration, no party decorations", "tone": "remembrance"}
+  }
+}

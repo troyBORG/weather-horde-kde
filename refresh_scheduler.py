@@ -6,7 +6,7 @@ settling/backoff. Never treat a telemetry gap (including suspend) as safety.
 import math
 import uuid
 
-REASONS = frozenset(('interval', 'unlock', 'startup', 'activity_recovered', 'retry'))
+REASONS = frozenset(('interval', 'unlock', 'startup', 'activity_recovered', 'retry', 'calendar_change'))
 
 
 class RefreshScheduler:
