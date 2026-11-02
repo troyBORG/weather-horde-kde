@@ -4,6 +4,10 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import io
+import sys
+import zipfile
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,6 +22,18 @@ def load():
 
 
 class PublicArtifactTests(unittest.TestCase):
+    def test_scanner_inspects_compressed_members_and_qrc_names(self):
+        with patch.object(sys, 'path', [str(ROOT / 'scripts'), *sys.path]):
+            from ci_check import scan
+        forbidden = [b'/private-builder-checkout']
+        for name, data in [('runtime.so', forbidden[0]), ('generated.qrc', b'innocuous')]:
+            stream = io.BytesIO()
+            with zipfile.ZipFile(stream, 'w', zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr(name, data)
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                scan(stream.getvalue(), forbidden)
+        scan(b'public relative runtime data', forbidden)
+
     def test_runtime_inventory_excludes_build_intermediates(self):
         policy = load()
         with tempfile.TemporaryDirectory() as tmp:

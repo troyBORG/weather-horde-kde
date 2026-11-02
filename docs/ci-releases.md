@@ -104,10 +104,9 @@ docker build -t weather-horde-ci .github/ci
 docker create --name weather-horde-ci-check --network none --cap-drop ALL \
   --security-opt no-new-privileges \
   --mount type=bind,source="$PWD",target=/source,readonly \
-  weather-horde-ci bash -euc \
-  'git -c safe.directory=/source clone --no-hardlinks /source repo; cd repo; python scripts/ci_check.py'
+  weather-horde-ci bash /source/scripts/ci_container.sh
 docker start --attach weather-horde-ci-check
-docker cp weather-horde-ci-check:/home/ci/repo/public ./public
+docker cp weather-horde-ci-check:/home/ci/public ./public
 ```
 
 Use a clean ordinary clone, not a linked worktree whose `.git` points outside
