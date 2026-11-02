@@ -3,7 +3,8 @@ project(weather_pairing LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_AUTOMOC ON)
 # Do not embed the builder's checkout/HOME in __FILE__ or debug information.
-add_compile_options("-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/..=."
+get_filename_component(PUBLIC_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+add_compile_options("-ffile-prefix-map=${PUBLIC_SOURCE_ROOT}=."
                     "-ffile-prefix-map=${CMAKE_BINARY_DIR}=build")
 find_package(Qt6 REQUIRED COMPONENTS Core Qml)
 qt_policy(SET QTP0001 NEW)
