@@ -10,7 +10,7 @@ REASONS = frozenset(('interval', 'unlock', 'startup', 'activity_recovered', 'ret
 
 
 class RefreshScheduler:
-    def __init__(self, grace=60, observation_ttl=15):
+    def __init__(self, grace=0, observation_ttl=15):
         self.grace, self.observation_ttl = grace, observation_ttl
         self.enabled = False
         self.mode = None
@@ -24,6 +24,7 @@ class RefreshScheduler:
         self.failures = 0
         self.blocker = 'activity_unknown'
         self.permanent_error = ''
+        self.retry_reason = ''
 
     def configure(self, enabled, mode, targets, interval):
         changed = self.mode != mode or self.targets != set(targets)
@@ -32,6 +33,7 @@ class RefreshScheduler:
             self.active = None
             self.retry_at = 0
             self.failures = 0
+            self.retry_reason = ''
         self.enabled, self.mode = enabled, mode
         self.targets, self.interval = set(targets), interval
 
@@ -67,6 +69,7 @@ class RefreshScheduler:
                 monotonic_now-self.safe_since < self.grace):
             return None
         self.active = {'generation_id': uuid.uuid4().hex, 'targets': sorted(self.pending), 'mode': self.mode}
+        self.retry_reason = ''
         return dict(self.active)
 
     def complete(self, target, generation_id, applied_at):
@@ -82,7 +85,11 @@ class RefreshScheduler:
 
     def fail(self, reason, retryable=True, monotonic_now=0):
         self.active = None
+        self.retry_reason = reason
         self.failures += 1
+        if retryable and self.failures > 3:
+            retryable = False
+            reason = 'Retry budget exhausted: ' + reason
         self.retry_at = monotonic_now + (60, 300, 900)[min(self.failures-1, 2)] if retryable else math.inf
         if retryable: self.blocker = reason
         else: self.permanent_error = reason
@@ -90,9 +97,17 @@ class RefreshScheduler:
 
     def status(self, monotonic_now):
         stale = self.last_observed is None or not 0 <= monotonic_now-self.last_observed <= self.observation_ttl
+        waiting = self.permanent_error or self.retry_reason or ('activity_unknown' if stale else self.blocker or ('settling' if self.safe_since is not None and monotonic_now-self.safe_since < self.grace else 'ready'))
+        targets = {target: {'state': ('rendering' if self.active and target in self.active['targets'] else
+                    'waiting' if target in self.pending and waiting != 'ready' else
+                    'pending' if target in self.pending else
+                    'completed' if target in self.success.get(self.mode, {}) else 'idle'),
+                    'waiting_reason': waiting if target in self.pending else '',
+                    'last_success': self.success.get(self.mode, {}).get(target)} for target in sorted(self.targets)}
         return {'pending': sorted(self.pending),
+                'targets': targets,
                 'reasons': sorted(set().union(*self.pending.values())) if self.pending else [],
-                'waiting_reason': self.permanent_error or ('activity_unknown' if stale else self.blocker or ('settling' if self.safe_since is not None and monotonic_now-self.safe_since < self.grace else 'ready')),
+                'waiting_reason': waiting,
                 'activity_reason': 'activity_unknown' if stale else self.blocker,
                 'settling_seconds': math.ceil(max(0, self.grace - (monotonic_now-self.safe_since))) if self.safe_since is not None else self.grace,
                 'retry_seconds': math.ceil(max(0, self.retry_at-monotonic_now)) if math.isfinite(self.retry_at) else None,

@@ -13,7 +13,7 @@ from safety import collect
 from scene import resolve_zip, weather_preview, PROMPT_VERSION, condition, fetch_json, compose_for_target, FRAMING_MODES, COMPOSITION_VERSION
 
 import hashlib
-SERVICE_VERSION = "0.1.10"
+SERVICE_VERSION = "0.1.11"
 # Captured once at import: disk updates must never masquerade as a reload.
 # Include local runtime modules: a safety-only fix must invalidate old handshakes.
 SOURCE_REVISION = hashlib.sha256(b''.join(
@@ -24,7 +24,7 @@ SOURCE_REVISION = hashlib.sha256(b''.join(
 SCENE_KINDS = ('rural', 'townpark', 'woodland', 'urban', 'river')
 SCENE_CHOICES = SCENE_KINDS + ('random',)
 
-INTERVALS = (30, 60, 120, 240, 480, 720, 1440)
+INTERVALS = (5, 10, 15, 30, 60, 120, 240, 480, 720, 1440)
 
 
 class Controller:
@@ -116,8 +116,11 @@ class Controller:
         self.last_unlocked = None
         self.refresh_started = False
         self.calendar_success = {}
+        self.saved_refresh_intent = None
         try:
             saved = json.loads((self.root/'refresh-state.json').read_text())
+            if saved.get('mode') == self.settings['automation_kind']:
+                self.saved_refresh_intent = saved.get('pending', {})
             self.scheduler.success = saved.get('success', {})
             self.calendar_success = saved.get('calendar_success', {})
             self.scheduler.permanent_error = saved.get('permanent_error', '')
@@ -475,7 +478,7 @@ class Controller:
                 with self.lock:
                     if refresh_id and self.scheduler.active and self.scheduler.active['generation_id'] == refresh_id:
                         self.refresh_event('refresh_incomplete', generation_id=refresh_id, state=self.state)
-                        self.scheduler.fail('refresh_incomplete', retryable=not outstanding, monotonic_now=time.monotonic())
+                        self.scheduler.fail(self.last_error or (self.quarantine or {}).get('reason') or 'refresh_incomplete', retryable=not outstanding, monotonic_now=time.monotonic())
                         self.save_refresh()
                 self.job_guard = None
                 if not outstanding: self.render_lock.release()
@@ -526,6 +529,7 @@ class Controller:
     def save_refresh(self):
         from wallpaper import atomic_json
         atomic_json(self.root/'refresh-state.json', {'success': self.scheduler.success,
+                    'mode': self.scheduler.mode,
                     'pending': {k: sorted(v) for k, v in self.scheduler.pending.items()},
                     'calendar_success': self.calendar_success,
                     'permanent_error': self.scheduler.permanent_error})
@@ -576,12 +580,23 @@ class Controller:
         if self.settings['automation_kind'] == 'prompt_preview': targets = ['prompt']
         s.configure(self.settings['automation_enabled'] and not self.override_status()['active'],
                     self.settings['automation_kind'], targets, self.settings['interval_minutes']*60)
+        if self.saved_refresh_intent is not None:
+            s.request('retry', self.saved_refresh_intent)
+            self.saved_refresh_intent = None
         if not s.enabled:
             self.save_refresh()
             return
         unlocked = self.session_activity.poll()
-        reason = 'startup' if not self.refresh_started else 'unlock' if unlocked is True and self.last_unlocked is not True else 'interval'
-        self.refresh_started, self.last_unlocked = True, unlocked
+        last_tick = getattr(self, '_refresh_tick', None)
+        last_wall = getattr(self, '_refresh_wall', None)
+        resumed = last_tick is not None and (monotonic_now < last_tick or monotonic_now-last_tick > s.observation_ttl or
+                    (last_wall is not None and now-last_wall > s.observation_ttl))
+        self._refresh_wall = now
+        reason = 'startup' if not self.refresh_started else 'unlock' if (unlocked is True and self.last_unlocked is False) or resumed else 'interval'
+        self._refresh_tick = monotonic_now
+        self.refresh_started = True
+        if unlocked is not None: self.last_unlocked = unlocked
+        if reason == 'unlock': s.request(reason, targets)
         s.reconcile(now, reason)
         context = self.calendar_now(now)
         if not context['notice']:
@@ -756,6 +771,7 @@ class Controller:
                     raise ValueError('Automation is paused during testing override')
                 self.settings.update(update)
                 if set(update) - {'holiday_preview_date'}:
+                    self.saved_refresh_intent = None
                     self.scheduler.configure(False, self.settings['automation_kind'], [], self.settings['interval_minutes']*60)
                     self.refresh_started = False
                     self.save_refresh()

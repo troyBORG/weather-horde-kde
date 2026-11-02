@@ -67,6 +67,8 @@ Item {
    check(action && action.visible && action.text.indexOf("fixture-job")>=0,"prompt ID visible beside Apply controls")
    widget.acceptStatus({state:"idle",guard:{decision:"safe"},automation_enabled:true,interval_minutes:60,catch_up_refresh:true,refresh:{pending:["TEST"],waiting_reason:"settling",settling_seconds:40,retry_seconds:0,last_success:{image_wallpaper:{TEST:1700000000}}}})
    check(widget.refreshSummary.indexOf("40s")>=0 && widget.refreshSummary.indexOf("TEST")>=0,"pending target and grace visible")
+   widget.acceptStatus({state:"idle",guard:{decision:"safe"},automation_enabled:true,interval_minutes:5,catch_up_refresh:true,refresh:{pending:["B"],waiting_reason:"vr_active",targets:{A:{state:"completed"},B:{state:"waiting",waiting_reason:"vr_active"}}}})
+   check(widget.refreshSummary.indexOf("A: completed")>=0 && widget.refreshSummary.indexOf("B: waiting")>=0 && widget.refreshSummary.indexOf("vr_active")>=0,"per-target progress and latched reason visible")
    check(label(widget.fullRepresentationItem,"catchupRefreshToggle").checked,"catchup consent visible")
    widget.acceptStatus({state:"idle",guard:{decision:"safe"},interval_minutes:60,seasonal_themes:true,holiday_themes:true,theme_strength:"subtle",holiday_date_mode:"actual",holiday_preset:"mainstream_iowa",calendar:{season:"autumn",selected_theme:"halloween",local_date:"2026-10-31",timezone:"America/Chicago",events:[],valid_until_utc:"2026-11-01T05:00:00+00:00"}})
    check(label(widget.fullRepresentationItem,"holidayThemesToggle").checked,"holiday setting visible")

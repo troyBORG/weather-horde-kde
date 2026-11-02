@@ -61,6 +61,24 @@ class HolidaySettingsTests(unittest.TestCase):
             self.assertEqual(set(c.scheduler.pending),{'L'})
             self.assertEqual(c.next_eligible_at,deadline)
 
+    def test_preview_date_preserves_restart_intent_but_live_change_clears_it(self):
+        from pathlib import Path
+        import json
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d)/'refresh-state.json').write_text(json.dumps({
+                'mode':'prompt_preview','pending':{'prompt':['unlock']},
+                'calendar_success':{'prompt_preview':{'prompt':'previous-calendar'}}}))
+            c=Controller(d)
+            self.assertEqual(c.saved_refresh_intent,{'prompt':['unlock']})
+            c.dispatch('PUT','/v1/settings',{'holiday_preview_date':'2026-10-31'})
+            self.assertEqual(c.saved_refresh_intent,{'prompt':['unlock']})
+            restored=Controller(d)
+            self.assertEqual(restored.saved_refresh_intent,{'prompt':['unlock']})
+            self.assertEqual(restored.calendar_success['prompt_preview'],{'prompt':'previous-calendar'})
+            c.dispatch('PUT','/v1/settings',{'holiday_themes':True})
+            self.assertIsNone(c.saved_refresh_intent)
+            self.assertFalse(c.scheduler.pending)
+
     def test_calendar_settings_validated_persisted_without_automation_changes(self):
         with tempfile.TemporaryDirectory() as d:
             c=Controller(d)

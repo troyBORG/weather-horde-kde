@@ -87,7 +87,7 @@ class HolidayRefreshTests(unittest.TestCase):
             self.assertEqual(restored.calendar_success.get('image_wallpaper',{}).get('L'),'durable-calendar')
             self.assertEqual(restored.calendar_success.get('image_preview',{}).get('L'),'durable-calendar')
 
-    def test_game_exit_calendar_catchup_waits_full_grace_and_targets_only_stale(self):
+    def test_game_exit_calendar_catchup_runs_when_fresh_safe_and_targets_only_stale(self):
         from unittest.mock import Mock
         before=datetime.fromisoformat('2026-11-01T04:59:59+00:00').timestamp()
         now=before+2
@@ -104,12 +104,19 @@ class HolidayRefreshTests(unittest.TestCase):
                     with patch('weather_controller.time.time',return_value=now+elapsed): c.tick(now+elapsed,elapsed)
                 dispatch.assert_not_called()
                 self.assertEqual(set(c.scheduler.pending),{'L'})
-                for elapsed in range(40,100,10):
-                    c.guard={'decision':'safe','observed_at':now+elapsed}
-                    with patch('weather_controller.time.time',return_value=now+elapsed): c.tick(now+elapsed,elapsed)
+                # A safe label with expired telemetry must not authorize work.
+                c.guard={'decision':'safe','observed_at':now+20}
+                with patch('weather_controller.time.time',return_value=now+40): c.tick(now+40,40)
                 dispatch.assert_not_called()
-                c.guard={'decision':'safe','observed_at':now+100}
-                with patch('weather_controller.time.time',return_value=now+100): c.tick(now+100,100)
+                # Unknown lock state remains blocked even with fresh safe telemetry.
+                c.guard={'decision':'safe','observed_at':now+41}
+                with patch.object(c.session_activity,'poll',return_value=None), patch('weather_controller.time.time',return_value=now+41):
+                    c.tick(now+41,41)
+                dispatch.assert_not_called()
+                self.assertEqual(set(c.scheduler.pending),{'L'})
+                # The first fresh, safe, unlocked observation is eligible immediately.
+                c.guard={'decision':'safe','observed_at':now+42}
+                with patch('weather_controller.time.time',return_value=now+42): c.tick(now+42,42)
                 dispatch.assert_called_once()
                 self.assertEqual(c.scheduler.active['targets'],['L'])
 

@@ -132,7 +132,10 @@ PlasmoidItem {
         let pending = refreshState.pending || []
         let applied = (refreshState.last_success || {}).image_wallpaper || {}
         let history = Object.keys(applied).map(function(k) { return k + ": " + new Date(applied[k]*1000).toLocaleString() }).join(" · ")
+        let targets = refreshState.targets || {}
+        let progress = Object.keys(targets).map(function(k) { return k + ": " + targets[k].state + (targets[k].waiting_reason ? " — " + targets[k].waiting_reason : "") }).join("\n")
         return "Refresh " + (pending.length ? "pending: " + pending.join(", ") : "not pending") +
+            (progress ? "\n" + progress : "") +
             " · " + (refreshState.waiting_reason || "unknown") +
             " · settling " + (refreshState.settling_seconds || 0) + "s" +
             (refreshState.retry_seconds ? " · retry " + refreshState.retry_seconds + "s" : "") +
@@ -141,7 +144,7 @@ PlasmoidItem {
     }
     property bool automationEnabled: false
     property int intervalMinutes: 60
-    readonly property var intervals: [30, 60, 120, 240, 480, 720, 1440]
+    readonly property var intervals: [5, 10, 15, 30, 60, 120, 240, 480, 720, 1440]
     property var monitors: []
     property string selectedTarget: "all"
     property var candidates: []
@@ -539,7 +542,7 @@ PlasmoidItem {
                     Label { text: "Interval" }
                     ComboBox {
                         Layout.fillWidth: true
-                        model: ["30 minutes", "1 hour", "2 hours", "4 hours", "8 hours", "12 hours", "Daily"]
+                        model: ["5 minutes", "10 minutes", "15 minutes", "30 minutes", "1 hour", "2 hours", "4 hours", "8 hours", "12 hours", "Daily"]
                         currentIndex: root.intervals.indexOf(root.intervalMinutes)
                         enabled: root.online && !root.busy
                         onActivated: {
