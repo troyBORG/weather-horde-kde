@@ -38,6 +38,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           include-hidden-files: false
+          archive: true
+          overwrite: false
 
   release:
     name: Publish tested assets
@@ -58,6 +60,8 @@ jobs:
         with:
           name: public-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: public
+          skip-decompress: false
+          digest-mismatch: error
       - name: Verify hashes, publish draft, verify uploaded bytes, then expose release
         env:
           GH_TOKEN: ${{ github.token }}

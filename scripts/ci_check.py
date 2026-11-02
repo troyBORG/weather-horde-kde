@@ -20,22 +20,22 @@ from ci_release import ASSETS, release_target, verify_assets
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def scan(data, forbidden):
+def scan(data, forbidden, member_name='asset'):
     """Inspect uncompressed archive members, including nested installer payloads."""
     if any(value in data for value in forbidden):
-        raise ValueError('Public artifact contains builder path')
+        raise ValueError('Public artifact contains builder path in ' + member_name)
     stream = io.BytesIO(data)
     if zipfile.is_zipfile(stream):
         with zipfile.ZipFile(stream) as archive:
             for name in archive.namelist():
                 if name.endswith('.qrc'):
                     raise ValueError('Generated QRC is not a runtime artifact')
-                scan(archive.read(name), forbidden)
+                scan(archive.read(name), forbidden, name)
     elif data[:2] == b'\x1f\x8b':
         with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
             for member in archive:
                 if member.isfile():
-                    scan(archive.extractfile(member).read(), forbidden)
+                    scan(archive.extractfile(member).read(), forbidden, member.name)
 
 
 def main():
@@ -69,6 +69,10 @@ def main():
                    'failures': len(result.failures), 'errors': len(result.errors), 'skips': len(result.skipped)}
         print(json.dumps(summary), flush=True)
         if not result.wasSuccessful() or result.skipped or result.testsRun != len(collected):
+            # Public annotations contain only test IDs/counts, never raw fixture
+            # tracebacks, receipts or environment. Useful without log-download auth.
+            failed = [test.id() for test, _ in result.failures + result.errors + result.skipped]
+            print('::error title=Native fixture checks::' + json.dumps(summary) + ' ' + ', '.join(failed), flush=True)
             raise RuntimeError('Full suite must pass with no skips')
         # Production generator checks that committed source is clean and the exact
         # already-tested plasmoid matches its readback receipt. Never rebuild here.
