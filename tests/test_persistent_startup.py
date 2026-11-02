@@ -125,7 +125,10 @@ class StartupTests(unittest.TestCase):
         for enabled in (False, True): self._fixture_install(enabled, enable_catchup=True)
         self._fixture_install(True, fail_reload=True, enable_catchup=True)
 
-    def _fixture_install(self, enabled, fail_reload=False, enable_catchup=False):
+    def test_diagnostic_exact_main_stops_before_backup_and_mutations(self):
+        self._fixture_install(True, diagnose=True)
+
+    def _fixture_install(self, enabled, fail_reload=False, enable_catchup=False, diagnose=False):
         # Real filesystem writes/locks, actual systemd verifier and authenticated
         # validation logic; user manager and display edges are fixtures, no GPU.
         from weather_controller import SOURCE_REVISION
@@ -157,7 +160,9 @@ class StartupTests(unittest.TestCase):
                 elif args[0]=='disable':
                     if link.is_symlink(): link.unlink()
                 elif args[0]=='start': active=True
-                return subprocess.CompletedProcess(args,0,out,'')
+                rc = 1 if args[0]=='is-enabled' and out.strip()!='enabled' else 0
+                if check and rc: raise subprocess.CalledProcessError(rc, args, output=out)
+                return subprocess.CompletedProcess(args,rc,out,'')
             settings=json.loads(raw)
             if enable_catchup: settings['catch_up_refresh']=True
             ready=settings|{'source_revision':SOURCE_REVISION,'service_version':'test','render_enabled':True,'apply_enabled':True,'displays':[{'id':'DP-2'}],'testing_override':{'active':False},'comfy_service':{'managed':True},'next_eligible_at':time.time()+1800,'guard':{'decision':'unknown'}}
@@ -173,6 +178,28 @@ class StartupTests(unittest.TestCase):
                 stack.enter_context(patch('displays.discover',return_value=([{'id':'DP-2'}],None)))
                 stack.enter_context(patch.object(sys_module(),'argv',['installer','--manual-wallpapers','--managed-comfy']+(['--enable-catch-up-refresh'] if enable_catchup else [])))
                 output=io.StringIO()
+                if diagnose:
+                    sys_module().argv += ['--diagnose-before-backup']
+                    # Keep the REAL hook active through exact main, then disable
+                    # this test-only wrapper so TemporaryDirectory can clean up.
+                    active_audit = [True]
+                    real_add = sys_module().addaudithook
+                    def install_hook(hook):
+                        real_add(lambda event, args: hook(event, args) if active_audit[0] else None)
+                    try:
+                        with patch.object(sys_module(), 'addaudithook', install_hook), contextlib.redirect_stdout(output):
+                            m.main()
+                    finally:
+                        active_audit[0] = False
+                    result=json.loads(output.getvalue())
+                    self.assertTrue(result['stopped_before_write'])
+                    self.assertEqual(result['enablement'], 'not-found')
+                    self.assertFalse(list(state.glob('controller-install-*')))
+                    self.assertFalse(dest.exists())
+                    self.assertEqual((state/'settings.json').read_bytes(),raw)
+                    self.assertFalse(active)
+                    self.assertTrue(all(c[0] in ('show','is-active','is-enabled') for c in calls))
+                    return
                 if fail_reload:
                     with contextlib.redirect_stdout(output), self.assertRaises(subprocess.CalledProcessError): m.main()
                     self.assertEqual(dest.read_bytes(),original_unit)
