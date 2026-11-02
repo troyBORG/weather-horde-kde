@@ -62,7 +62,7 @@ def failure_report(error):
         elif isinstance(error, OwnerPreflightError):
             line += ' '+str(error)
         lines.append(line)
-        pending.extend([error.__cause__, getattr(error, 'owner_rollback_error', None)])
+        pending.extend([error.__cause__, error.__context__, getattr(error, 'owner_rollback_error', None)])
     return '; caused/rollback by: '.join(lines)
 
 

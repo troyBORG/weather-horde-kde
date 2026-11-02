@@ -15,6 +15,16 @@ def load(name):
     return module
 
 class HardeningTests(unittest.TestCase):
+    def test_implicit_os_cause_is_not_lost(self):
+        m = load('deploy-preserving-owner.py')
+        original = OSError(errno.ENOSPC, 'PRIVATE original')
+        later = OSError(errno.EROFS, 'PRIVATE restoration')
+        later.__context__ = original
+        report = m.failure_report(later)
+        self.assertIn('ENOSPC', report)
+        self.assertIn('EROFS', report)
+        self.assertNotIn('PRIVATE', report)
+
     def test_original_cause_survives_rollback_failure(self):
         m = load('deploy-preserving-owner.py')
         io = Mock()
