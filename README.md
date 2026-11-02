@@ -15,8 +15,14 @@ See [owner installer hardening](docs/owner-installer-hardening.md) for hash-pinn
 - Reviewed local SD1.5/SDXL checkpoint discovery and bounded native-geometry workflows. Model files are not included.
 - Manual **Generate** creates a validated preview. **Apply** and **Restore** are separate selected-monitor transactions with readback.
 - Explicit Auto choices distinguish prompt preview, generation, and generation plus wallpaper application. Installing capabilities is not new automation consent.
-- Opt-in [catch-up refresh](docs/catch-up-refresh.md) coalesces overdue work after unlock/gaming, pauses while locked, and requires 60 continuously safe seconds. This feature branch is **runtime unverified** until owner reload and actual render/apply acceptance.
+- Opt-in [catch-up refresh](docs/requested-refresh-0.1.11.md) coalesces pending work after unlock/gaming and pauses while locked or session state is unknown. Fresh, valid safe activity/resource observations and a known unlocked session allow eligibility **without an additional 60-second settling delay**; this does not bypass submission, VRAM, ownership, rendering or automatic-apply freshness guards.
+- Refresh intervals include **5, 10 and 15 minutes**, alongside the existing longer choices. An existing saved **30-minute** interval stays 30 minutes until the user explicitly changes it; adding choices does not change Auto, mode or target consent.
+- [Seasonal styling and holiday decorations](docs/seasons-and-holidays.md) are opt-in and default OFF for new and migrated installations. Calendar context is resolved offline for the scene timezone/jurisdiction, independently of weather evidence.
 - Game/VR, unknown clients, GPU load/VRAM, queue ownership and image-validation guards defer unsafe work. Testing override is explicit and temporary, not a recommended deployment workaround.
+
+**Known cosmetic documentation/UI issue:** the QML catch-up explanation still mentions 60 safe seconds, and the older [catch-up design notes](docs/catch-up-refresh.md) describe that superseded grace policy. Neither describes the current backend behavior above; the [requested refresh policy](docs/requested-refresh-0.1.11.md) is the current reference. This README correction does not change QML or runtime code. Immediate eligibility is not guaranteed immediate generation: other guards, retry backoff and latched errors still apply.
+
+**Merged on GitHub is not deployed on the desktop.** A source commit, package or release does not update the running controller or loaded widget. Owner deployment, authenticated loaded-revision/capability checks and actual render/apply acceptance remain separate; no live installation, settings changes, service restart or Plasma reload is performed by publication. The stopped-only preserving deployment path retains existing settings/Auto consent; enabling catch-up or calendar styling is a separate explicit choice.
 
 Prompts are not pixel constraints. Synthetic fixture images and passing tests do not prove generated visual quality or live wallpaper application.
 
