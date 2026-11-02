@@ -3,7 +3,9 @@ FROM archlinux:base@sha256:e82623936fa1a69700b48e98b058df6eaab18b737c27473a7234a
 RUN printf 'Server = https://archive.archlinux.org/repos/2026/11/01/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist \
     && pacman -Syyuu --noconfirm --needed base-devel cmake extra-cmake-modules git \
        python python-pillow python-yaml nodejs qt6-base qt6-declarative \
-       libplasma kpackage plasma-workspace dbus systemd \
+       libplasma kpackage plasma-workspace plasma-desktop dbus systemd man-db \
+    && python -c 'from pathlib import Path; p=Path("/etc/pacman.conf"); p.write_text("\n".join(line for line in p.read_text().splitlines() if not (line.startswith("NoExtract") and "usr/share/man/" in line)) + "\n")' \
+    && pacman -S --noconfirm systemd \
     && pacman -Scc --noconfirm \
     && useradd --create-home --uid 1001 ci \
     && chmod 700 /home/ci
