@@ -1,8 +1,12 @@
 # Weather Horde KDE
 
-A KDE Plasma 6 widget and authenticated loopback controller for weather-aware wallpaper previews using local ComfyUI. The source snapshot reports version **0.1.10**; that is not a Git release tag or proof of a loaded deployment.
+A KDE Plasma 6 widget and authenticated loopback controller for weather-aware wallpaper previews using local ComfyUI. The source snapshot reports version **0.1.11**; that is not a Git release tag or proof of a loaded deployment.
 
 **Experimental source release.** Owner and Comfy installation paths are explicit configuration; geographic defaults and some legacy recovery targets remain site-specific. Read [deployment](docs/deployment.md), [security](SECURITY.md), and [licensing status](docs/licensing.md) before installation or redistribution. No project-wide license grant has been invented.
+
+## Owner installer update
+
+See [owner installer hardening](docs/owner-installer-hardening.md) for hash-pinned delivery, read-only preflight, exact extraction resume and stopped-only preserving deployment. This does not restart or modify a running installation.
 
 ## What it does
 

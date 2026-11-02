@@ -8,11 +8,15 @@ from pathlib import Path
 import pwd
 
 
+class OwnerPreflightError(RuntimeError, ValueError):
+    """Safe owner-facing message; never include private values or command output."""
+
+
 def absolute_path(name, default):
     value = os.environ.get(name) or str(default)
     path = Path(value)
     if not path.is_absolute() or '..' in path.parts or value != value.strip() or any(ord(c) < 32 for c in value):
-        raise ValueError(name + ' must be an absolute path without traversal, surrounding whitespace or control characters')
+        raise OwnerPreflightError(name + ' must be an absolute path without traversal, surrounding whitespace or control characters')
     return path
 
 
@@ -27,13 +31,13 @@ def comfy_root():
 def require_owner():
     name = os.environ.get('WEATHER_HORDE_OWNER', '')
     if not name:
-        raise RuntimeError('Set WEATHER_HORDE_OWNER in the owner graphical terminal')
+        raise OwnerPreflightError('Set WEATHER_HORDE_OWNER in the owner graphical terminal')
     try:
         owner = pwd.getpwnam(name)
-    except KeyError:
-        raise RuntimeError('Set WEATHER_HORDE_OWNER to the intended KDE owner; run in its graphical terminal') from None
+    except (KeyError, ValueError):
+        raise OwnerPreflightError('Set WEATHER_HORDE_OWNER to the intended KDE owner; run in its graphical terminal') from None
     if os.getuid() == 0 or os.getuid() != owner.pw_uid:
-        raise RuntimeError('Run in the configured owner graphical terminal, never root or a different account')
+        raise OwnerPreflightError('Run in the configured owner graphical terminal, never root or a different account')
     return owner
 
 

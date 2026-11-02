@@ -18,7 +18,7 @@ from urllib.request import Request, build_opener, ProxyHandler
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from portable_paths import require_owner as require_configured_owner, trusted_source_uids, comfy_root
+from portable_paths import require_owner as require_configured_owner, trusted_source_uids, comfy_root, OwnerPreflightError
 UNIT = 'weather-horde-kde.service'
 ENV_KEYS = ('DISPLAY','WAYLAND_DISPLAY','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS',
             'XDG_SESSION_TYPE','XDG_CURRENT_DESKTOP','XDG_DATA_DIRS','LANG')
@@ -26,9 +26,11 @@ AUTO_KEYS = ('automation_enabled','automation_kind','automation_target','interva
 STAGE = 'arguments'
 
 
-def failure_details(exc, stage):
+def failure_details(exc, stage, _seen=None):
     """Only fixed labels and numeric evidence; never exception text/paths/argv."""
-    kinds = (PermissionError, FileNotFoundError, FileExistsError, BlockingIOError,
+    seen = set() if _seen is None else _seen
+    seen.add(id(exc))
+    kinds = (OwnerPreflightError, PermissionError, FileNotFoundError, FileExistsError, BlockingIOError,
              OSError, ValueError, RuntimeError, ImportError,
              subprocess.CalledProcessError, subprocess.TimeoutExpired)
     kind = next((t.__name__ for t in kinds if isinstance(exc, t)), 'Exception')
@@ -36,7 +38,10 @@ def failure_details(exc, stage):
     if isinstance(exc, subprocess.CalledProcessError): kind = 'CalledProcessError'
     if isinstance(exc, subprocess.TimeoutExpired): kind = 'TimeoutExpired'
     result = {'stage': stage, 'exception': kind}
-    if isinstance(exc, OSError) and isinstance(exc.errno, int): result['errno'] = exc.errno
+    if isinstance(exc, OSError) and isinstance(exc.errno, int):
+        import errno
+        result['errno'] = exc.errno
+        result['errno_name'] = errno.errorcode.get(exc.errno, 'UNKNOWN')
     if isinstance(exc, (subprocess.CalledProcessError, subprocess.TimeoutExpired)):
         cmd = exc.cmd
         label = 'other'
@@ -55,6 +60,10 @@ def failure_details(exc, stage):
             frames.append(tb.tb_lineno)
         tb = tb.tb_next
     result['installer_lines'] = frames[-5:]
+    cause = exc.__cause__ if exc.__cause__ is not None else (
+        None if exc.__suppress_context__ else exc.__context__)
+    if cause is not None and id(cause) not in seen and len(seen) < 5:
+        result['cause'] = failure_details(cause, stage, seen)
     return result
 
 
@@ -132,7 +141,7 @@ def ctl(*args, check=True): return run('systemctl','--user',*args,check=check)
 def props():
     result=ctl('show',UNIT,'--property=LoadState,ActiveState,SubState,MainPID,Transient,FragmentPath,DropInPaths',check=False)
     data=dict(line.split('=',1) for line in result.stdout.splitlines() if '=' in line)
-    if not data or result.returncode not in (0,1): raise RuntimeError('Cannot inspect owner user manager')
+    if not data or result.returncode not in (0,1): raise OwnerPreflightError('Cannot inspect owner user manager')
     return data
 
 
@@ -142,12 +151,24 @@ def controller_running(proc=Path('/proc')):
         try:
             if process.stat().st_uid!=os.getuid(): continue
             with (process/'cmdline').open('rb') as stream: raw=stream.read(65537)
-            if len(raw)>65536: raise RuntimeError('Oversized same-owner process evidence')
+            if len(raw)>65536: raise OwnerPreflightError('Oversized same-owner process evidence')
             if any(Path(os.fsdecode(arg)).name=='weather_controller.py' for arg in raw.split(b'\0') if arg):
                 return True
-        except FileNotFoundError: continue  # exited during bounded observation
-        except PermissionError: raise RuntimeError('Unreadable same-owner process; cannot prove controller stopped')
+        except (FileNotFoundError, ProcessLookupError): continue  # exited during bounded observation
+        except PermissionError: raise OwnerPreflightError('Unreadable same-owner process; cannot prove controller stopped')
     return False
+
+
+def check_listeners():
+    for family, address in ((socket.AF_INET,('127.0.0.1',8734)),(socket.AF_INET6,('::1',8734))):
+        try:
+            with socket.socket(family) as sock:
+                if family==socket.AF_INET6: sock.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,1)
+                sock.bind(address)
+        except OSError as error:
+            label = 'IPv6' if family == socket.AF_INET6 else 'IPv4'
+            raise OwnerPreflightError(label+' listener exclusion on port 8734 failed; no deployment. '
+                                      'Inspect occupied port or disabled protocol; unsupported IPv6 is not silently skipped.') from error
 
 
 def require_stopped():
@@ -155,19 +176,16 @@ def require_stopped():
     # wait for collection BEFORE writing a persistent unit or reloading manager.
     for _ in range(50):
         p=props()
-        if p.get('DropInPaths'): raise RuntimeError('Existing unit drop-ins require review; nothing installed')
+        if p.get('DropInPaths'): raise OwnerPreflightError('Existing unit drop-ins require review; nothing installed')
         if p.get('ActiveState') not in ('inactive','failed') or p.get('MainPID')!='0':
-            raise RuntimeError('Controller active/transitioning: no restart attempted; retry only after safely idle and owner-stopped')
+            raise OwnerPreflightError('Controller active/transitioning: no restart attempted; retry only after safely idle and owner-stopped')
         if p.get('Transient')!='yes': break
         time.sleep(.2)
-    else: raise RuntimeError('Transient unit not collected; nothing installed')
-    if controller_running(): raise RuntimeError('Lingering owner controller process; no deployment attempted')
-    for family, address in ((socket.AF_INET,('127.0.0.1',8734)),(socket.AF_INET6,('::1',8734))):
-        with socket.socket(family) as sock:
-            if family==socket.AF_INET6: sock.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,1)
-            sock.bind(address)
+    else: raise OwnerPreflightError('Transient unit not collected; nothing installed')
+    if controller_running(): raise OwnerPreflightError('Lingering owner controller process; no deployment attempted')
+    check_listeners()
     if (Path.home()/'.local/state/weather-horde-kde/inflight.json').exists():
-        raise RuntimeError('Unresolved render journal: no deployment attempted')
+        raise OwnerPreflightError('Unresolved render journal: no deployment attempted')
     return p
 
 
@@ -175,8 +193,13 @@ def safe_path(path, owners, directory=False):
     for p in (path,*path.parents):
         meta=p.lstat()
         if stat.S_ISLNK(meta.st_mode) or meta.st_uid not in owners or meta.st_mode & 0o022:
-            raise RuntimeError('Unsafe path; permissions unchanged: '+str(p))
-    if directory and not path.is_dir(): raise RuntimeError('Not a directory: '+str(path))
+            import shlex
+            advice = ('Review this directory/file only; if unintended, run chmod go-w -- '+shlex.quote(str(p))
+                      if meta.st_uid == os.getuid() and not stat.S_ISLNK(meta.st_mode) and meta.st_mode & 0o022
+                      else 'Review ownership/symlink with the owner; do not relax trust checks')
+            raise OwnerPreflightError('Unsafe path; permissions unchanged: '+repr(str(p))+
+                               f' mode={stat.S_IMODE(meta.st_mode):04o} uid={meta.st_uid}. '+advice)
+    if directory and not path.is_dir(): raise OwnerPreflightError('Not a directory: '+str(path))
 
 
 def private_read(path):
@@ -185,7 +208,7 @@ def private_read(path):
     with os.fdopen(fd,'rb') as stream:
         st=os.fstat(stream.fileno())
         if not stat.S_ISREG(st.st_mode) or st.st_uid!=os.getuid() or stat.S_IMODE(st.st_mode)!=0o600 or st.st_nlink!=1:
-            raise RuntimeError('Expected private regular file: '+str(path))
+            raise OwnerPreflightError('Expected private regular file: '+str(path))
         return stream.read()
 
 
@@ -195,7 +218,7 @@ def atomic(path, data):
         with os.fdopen(fd,'wb') as stream:
             stream.write(data);stream.flush();os.fsync(stream.fileno())
         os.replace(name,path)
-        if path.read_bytes()!=data: raise RuntimeError('File readback failed')
+        if path.read_bytes()!=data: raise OwnerPreflightError('File readback failed')
     finally:
         if os.path.exists(name): os.unlink(name)
 
@@ -206,19 +229,19 @@ def api(token):
 
 
 def verify_status(status, expected, argv, revision):
-    if status.get('catch_up_refresh',False)!=expected.get('catch_up_refresh',False): raise RuntimeError('Catch-up policy mismatch')
-    if status.get('source_revision')!=revision: raise RuntimeError('Loaded source revision mismatch')
-    if any(status.get(k)!=expected.get(k) for k in AUTO_KEYS): raise RuntimeError('Automation settings mismatch')
+    if status.get('catch_up_refresh',False)!=expected.get('catch_up_refresh',False): raise OwnerPreflightError('Catch-up policy mismatch')
+    if status.get('source_revision')!=revision: raise OwnerPreflightError('Loaded source revision mismatch')
+    if any(status.get(k)!=expected.get(k) for k in AUTO_KEYS): raise OwnerPreflightError('Automation settings mismatch')
     if (not status.get('displays') or status.get('testing_override',{}).get('active') is not False
         or status.get('render_enabled') is not True
         or status.get('apply_enabled')!=('--manual-wallpapers' in argv)
         or status.get('comfy_service',{}).get('managed')!=('--managed-comfy' in argv)):
-        raise RuntimeError('Capability/display/override verification failed')
+        raise OwnerPreflightError('Capability/display/override verification failed')
     if status.get('checkpoint')!=argv[argv.index('--preview-checkpoint')+1]:
-        raise RuntimeError('Checkpoint mismatch')
+        raise OwnerPreflightError('Checkpoint mismatch')
     deadline=status.get('next_eligible_at',0)
     if not time.time()<deadline<=time.time()+expected['interval_minutes']*60+5:
-        raise RuntimeError('Scheduled deadline not verified')
+        raise OwnerPreflightError('Scheduled deadline not verified')
 
 
 def restore_backup(backup, destination, state):
@@ -230,9 +253,9 @@ def restore_backup(backup, destination, state):
     ctl('daemon-reload')
     if manifest['enabled']: ctl('enable',UNIT)
     if destination.exists() and destination.read_bytes()!=private_read(backup/'old-unit.service'):
-        raise RuntimeError('Rollback unit verification failed')
+        raise OwnerPreflightError('Rollback unit verification failed')
     enabled=ctl('is-enabled',UNIT,check=False).stdout.strip()=='enabled'
-    if enabled!=manifest['enabled']: raise RuntimeError('Rollback enablement verification failed')
+    if enabled!=manifest['enabled']: raise OwnerPreflightError('Rollback enablement verification failed')
     print('Rollback verified; controller remains stopped. Backup retained. No GPU/Plasma/Comfy commands.')
 
 
@@ -262,9 +285,9 @@ def main():
     os.umask(0o077)
     if not 30<=args.comfy_idle_seconds<=86400: raise ValueError('Invalid Comfy idle timeout')
     if not os.environ.get('WAYLAND_DISPLAY') or os.environ.get('XDG_RUNTIME_DIR')!='/run/user/'+str(os.getuid()):
-        raise RuntimeError('Run inside the owner Wayland graphical session')
+        raise OwnerPreflightError('Run inside the owner Wayland graphical session')
     if ctl('is-active','graphical-session.target',check=False).stdout.strip()!='active':
-        raise RuntimeError('Owner graphical-session.target not active')
+        raise OwnerPreflightError('Owner graphical-session.target not active')
     STAGE = 'trusted-source'
     trusted=trusted_source_uids()
     for path in [*ROOT.glob('*.py'), Path(__file__).resolve()]: safe_path(path,trusted)
@@ -275,14 +298,14 @@ def main():
     STAGE = 'state-path'
     state=Path.home()/'.local/state/weather-horde-kde'
     safe_path(state,(0,os.getuid()),True)
-    if stat.S_IMODE(state.stat().st_mode)!=0o700: raise RuntimeError('State must remain 0700')
+    if stat.S_IMODE(state.stat().st_mode)!=0o700: raise OwnerPreflightError('State must remain 0700')
     STAGE = 'unit-path'
     destination=Path.home()/'.config/systemd/user'/UNIT
     safe_path(destination.parent,(0,os.getuid()),True)
     if destination.exists() or destination.is_symlink():
         safe_path(destination,(0,os.getuid()))
-        if destination.stat().st_uid!=os.getuid(): raise RuntimeError('Existing unit must be owner-owned')
-    if (destination.parent/(UNIT+'.d')).exists(): raise RuntimeError('Existing service drop-ins require review')
+        if destination.stat().st_uid!=os.getuid(): raise OwnerPreflightError('Existing unit must be owner-owned')
+    if (destination.parent/(UNIT+'.d')).exists(): raise OwnerPreflightError('Existing service drop-ins require review')
     # Serialize with new controllers/recovery tools; old controllers also excluded
     # by unit/process/listener checks. No forced stop, no Auto pause/reset.
     STAGE = 'state-lock'
@@ -292,14 +315,14 @@ def main():
         if args.rollback:
             backup=args.rollback.absolute()
             if backup.parent!=state or not backup.name.startswith('controller-install-'):
-                raise RuntimeError('Rollback must name a private controller-install backup')
+                raise OwnerPreflightError('Rollback must name a private controller-install backup')
             safe_path(backup,(os.getuid(),0),True)
             restore_backup(backup,destination,state)
             return
         STAGE = 'display-discovery'
         from displays import discover
         displays,error=discover()
-        if error or not displays: raise RuntimeError('Owner live display discovery failed')
+        if error or not displays: raise OwnerPreflightError('Owner live display discovery failed')
         STAGE = 'read-settings'
         raw=private_read(state/'settings.json')
         STAGE = 'settings-and-command'
@@ -310,13 +333,13 @@ def main():
         STAGE = 'managed-comfy-load'
         if args.managed_comfy:
             if ctl('show','weather-horde-comfy.service','-p','LoadState','--value').stdout.strip()!='loaded':
-                raise RuntimeError('Install reviewed on-demand Comfy unit first; no Comfy start attempted')
+                raise OwnerPreflightError('Install reviewed on-demand Comfy unit first; no Comfy start attempted')
         STAGE = 'read-token'
         token=private_read(state/'token').decode().strip()
-        if not 32<=len(token)<=4096: raise RuntimeError('Invalid private authentication material')
+        if not 32<=len(token)<=4096: raise OwnerPreflightError('Invalid private authentication material')
         STAGE = 'enablement'
         enabled=ctl('is-enabled',UNIT,check=False).stdout.strip()
-        if enabled not in ('enabled','disabled','not-found',''): raise RuntimeError('Unexpected existing unit enablement')
+        if enabled not in ('enabled','disabled','not-found',''): raise OwnerPreflightError('Unexpected existing unit enablement')
         STAGE = 'backup-create'
         if args.diagnose_before_backup:
             print(json.dumps({'stage': STAGE, 'ok': True, 'enablement': enabled,
@@ -340,17 +363,17 @@ def main():
             if args.restore_30min_generate_apply_all or args.enable_catch_up_refresh:
                 atomic(state/'settings.json',json.dumps(settings,indent=2).encode())
             elif private_read(state/'settings.json')!=raw:
-                raise RuntimeError('Settings changed concurrently')
+                raise OwnerPreflightError('Settings changed concurrently')
             STAGE = 'daemon-reload'
             ctl('daemon-reload')
             p=props()
             if p.get('Transient')!='no' or p.get('FragmentPath')!=str(destination):
-                raise RuntimeError('Persistent definition not loaded; transient race refused')
+                raise OwnerPreflightError('Persistent definition not loaded; transient race refused')
             STAGE = 'enable-unit'
             ctl('enable',UNIT)
             link=destination.parent/'graphical-session.target.wants'/UNIT
             if not link.is_symlink() or link.resolve()!=destination or ctl('is-enabled',UNIT).stdout.strip()!='enabled':
-                raise RuntimeError('Graphical target enablement not verified')
+                raise OwnerPreflightError('Graphical target enablement not verified')
             STAGE = 'import-environment'
             ctl('import-environment',*[k for k in ENV_KEYS if os.environ.get(k)])
             atomic(backup/'launch.json',json.dumps({'argv':argv,'source_revision':SOURCE_REVISION}).encode())
@@ -370,13 +393,13 @@ def main():
             verify_status(status,settings,argv,SOURCE_REVISION)
             break
         except (OSError,ValueError,RuntimeError): time.sleep(1)
-    else: raise RuntimeError('Owner runtime verification failed; service not forcibly stopped; backup retained')
+    else: raise OwnerPreflightError('Owner runtime verification failed; service not forcibly stopped; backup retained')
     p=props()
     if p.get('ActiveState')!='active' or p.get('Transient')!='no' or p.get('FragmentPath')!=str(destination):
-        raise RuntimeError('Persistent running service identity not verified')
+        raise OwnerPreflightError('Persistent running service identity not verified')
     expected_raw = json.dumps(settings,indent=2).encode() if args.restore_30min_generate_apply_all or args.enable_catch_up_refresh else raw
     if private_read(state/'settings.json')!=expected_raw:
-        raise RuntimeError('Saved settings bytes changed unexpectedly')
+        raise OwnerPreflightError('Saved settings bytes changed unexpectedly')
     receipt={k:status[k] for k in (*AUTO_KEYS,'source_revision','service_version','next_eligible_at','render_enabled','apply_enabled')}
     receipt.update(enabled=True,target='graphical-session.target',managed_comfy=status['comfy_service']['managed'],
                    testing_override=False,guard_decision=status.get('guard',{}).get('decision'),

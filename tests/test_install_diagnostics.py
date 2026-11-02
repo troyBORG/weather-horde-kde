@@ -31,6 +31,32 @@ class DiagnosticTests(unittest.TestCase):
         self.assertEqual(result['command'], 'systemctl:is-enabled')
         self.assertEqual(result['returncode'], 1)
 
+    def test_hardened_listener_failure_retains_sanitized_errno_chain(self):
+        import errno
+        from unittest.mock import patch
+        secret = 'SECRET_TOKEN_LOCATION_ARGV'
+        with patch.object(m.socket, 'socket', side_effect=OSError(errno.EAFNOSUPPORT, secret)):
+            with self.assertRaises(m.OwnerPreflightError) as caught:
+                m.check_listeners()
+        report = m.failure_details(caught.exception, 'stopped-controller')
+        self.assertEqual(report['exception'], 'OwnerPreflightError')
+        self.assertEqual(report['cause']['errno'], errno.EAFNOSUPPORT)
+        self.assertEqual(report['cause']['errno_name'], 'EAFNOSUPPORT')
+        self.assertNotIn(secret, json.dumps(report))
+
+    def test_implicit_rollback_context_is_sanitized_and_cycles_are_bounded(self):
+        secret = 'SECRET_TOKEN_LOCATION_ARGV'
+        original = PermissionError(13, secret, '/private/'+secret)
+        later = OSError(28, secret)
+        later.__context__ = original
+        original.__context__ = later
+        report = m.failure_details(later, 'daemon-reload')
+        self.assertEqual(report['errno'], 28)
+        self.assertIn('cause', report, 'implicit OS context was discarded')
+        self.assertEqual(report['cause']['errno'], 13)
+        self.assertNotIn('cause', report['cause'])
+        self.assertNotIn(secret, json.dumps(report))
+
     def test_cpython_ignores_denied_bytecode_cache_writes(self):
         # A real loader import, with the cache write failing as on an unwritable
         # checkout. This is not evidence about historical owner filesystem state.
