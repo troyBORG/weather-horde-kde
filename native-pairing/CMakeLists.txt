@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.20)
 project(weather_pairing LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_AUTOMOC ON)
+# Do not embed the builder's checkout/HOME in __FILE__ or debug information.
+add_compile_options("-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/..=."
+                    "-ffile-prefix-map=${CMAKE_BINARY_DIR}=build")
 find_package(Qt6 REQUIRED COMPONENTS Core Qml)
 qt_policy(SET QTP0001 NEW)
 qt_add_qml_module(weatherpairing URI WeatherHorde.LocalPairing VERSION 1.0
