@@ -4,7 +4,7 @@ from refresh_scheduler import RefreshScheduler
 
 class RefreshSchedulerTests(unittest.TestCase):
     def ready(self, targets=('A','B')):
-        s = RefreshScheduler()
+        s = RefreshScheduler(grace=60)  # explicit legacy-policy coverage
         s.configure(True, 'image_wallpaper', targets, 1800)
         s.reconcile(10000, 'startup')
         for n in range(0, 61, 10): s.observe_activity(True, True, n)
@@ -67,7 +67,7 @@ class RefreshSchedulerTests(unittest.TestCase):
         self.assertIsNone(s.next_action(10000,6000))
 
     def test_blocked_intervals_coalesce_after_continuous_safe_minute(self):
-        s = RefreshScheduler()
+        s = RefreshScheduler(grace=60)  # explicit legacy-policy coverage
         s.configure(True, 'image_wallpaper', ['A'], 1800)
         for n in range(20):
             s.reconcile(10000 + n * 1800, 'interval')

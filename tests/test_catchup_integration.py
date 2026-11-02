@@ -17,25 +17,22 @@ class CatchupIntegrationTests(unittest.TestCase):
         return c
 
     @patch('weather_controller.weather_preview', return_value={'positive':'fixture','negative':'fixture'})
-    def test_startup_overdue_game_exit_coalesces_after_minute(self, _):
+    def test_startup_overdue_game_exit_coalesces_without_extra_minute(self, _):
         with tempfile.TemporaryDirectory() as d:
             c = self.make(d)
             c.guard['decision'] = 'game_active'
             for n in range(20):
-                c.tick(now=5000, monotonic_now=n*10)
+                c.tick(now=time.time(), monotonic_now=n*10)
             self.assertIsNone(c.render_thread)
             self.assertEqual(c.status()['refresh']['pending'], ['TEST'])
             c.guard['decision'] = 'safe'
-            for n in range(200, 260, 10):
-                c.tick(now=5000, monotonic_now=n)
-                self.assertIsNone(c.render_thread)
-            c.tick(now=5000, monotonic_now=260)
+            c.tick(now=time.time(), monotonic_now=200)
             c.render_thread.join(3)
             self.assertEqual(c.state, 'image_preview_ready')
             self.assertGreater(c.image_preview['generated_at'], time.time()-5)
             self.assertFalse(c.scheduler.pending)
             prior = c.image_preview['id']
-            c.tick(now=time.time(), monotonic_now=270)
+            c.tick(now=time.time(), monotonic_now=210)
             self.assertEqual(c.image_preview['id'], prior)
 
     @patch('weather_controller.weather_preview', return_value={'positive':'fixture','negative':'fixture'})
@@ -53,24 +50,22 @@ class CatchupIntegrationTests(unittest.TestCase):
             self.assertEqual(c.scheduler.pending.keys(), {'TEST'})
 
     @patch('weather_controller.weather_preview', return_value={'positive':'fixture','negative':'fixture'})
-    def test_overnight_unlock_once_and_quick_fresh_unlock_no_job(self, _):
+    def test_overnight_unlock_and_quick_fresh_unlock_each_refresh(self, _):
         with tempfile.TemporaryDirectory() as d:
             c = self.make(d)
             c.session_activity.poll.return_value=False
             for n in range(0,101,10): c.tick(now=time.time(),monotonic_now=n)
             self.assertIsNone(c.render_thread)
             c.session_activity.poll.return_value=True
-            for n in range(110,170,10):
-                c.tick(now=time.time(),monotonic_now=n)
-                self.assertIsNone(c.render_thread)
-            c.tick(now=time.time(),monotonic_now=170)
+            c.tick(now=time.time(),monotonic_now=110)
             thread=c.render_thread
             thread.join(3)
             c.session_activity.poll.return_value=False
-            c.tick(now=time.time(),monotonic_now=180)
+            c.tick(now=time.time(),monotonic_now=120)
             c.session_activity.poll.return_value=True
-            for n in range(190,261,10): c.tick(now=time.time(),monotonic_now=n)
-            self.assertIs(c.render_thread,thread)
+            c.tick(now=time.time(),monotonic_now=130)
+            c.render_thread.join(3)
+            self.assertIsNot(c.render_thread,thread)
             self.assertFalse(c.scheduler.pending)
 
     @patch('weather_controller.weather_preview', return_value={'positive':'fixture','negative':'fixture'})
