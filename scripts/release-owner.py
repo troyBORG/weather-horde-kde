@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Owner-only 0.1.10 rollout + optional single LEFT preview; never apply/restore.
+"""Owner-only 0.1.11 rollout + optional single LEFT preview; never apply/restore.
 Run in the configured owner's KDE terminal. No override, downloads, batch or foreign Comfy.
 """
 import argparse, hashlib, json, os, pwd, stat, subprocess, sys, time
@@ -95,7 +95,7 @@ def main():
              'automation_enabled':False,'testing_override':False,'wallpapers_unchanged':True,
              'visual_compliance':'NOT YET REVIEWED — inspect actual generated image; prompt tests are not image-quality proof',
              'image_metadata':image}
-    atomic_json(state/'release-0.1.10-preview-receipt.json',receipt)
+    atomic_json(state/'release-0.1.11-preview-receipt.json',receipt)
     print(json.dumps(receipt,indent=2))
     print('Actual image ready for visual inspection; no wallpaper was applied.')
 
