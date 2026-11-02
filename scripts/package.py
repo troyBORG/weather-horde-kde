@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import zipfile
+from public_artifacts import package_files
 
 root=Path(__file__).resolve().parents[1]
 artifacts=root/'artifacts'
@@ -11,13 +12,13 @@ artifacts.mkdir(exist_ok=True)
 package=root/'plasma-widget/org.troyborg.weatherhorde'
 # Build only the narrow same-user QML plugin with the installed Qt toolchain.
 build=artifacts/'native-pairing'
-subprocess.run(['cmake','-S',str(root/'native-pairing'),'-B',str(build)],check=True)
+subprocess.run(['cmake','-S',str(root/'native-pairing'),'-B',str(build),'-DCMAKE_BUILD_TYPE=Release'],check=True)
 subprocess.run(['cmake','--build',str(build)],check=True)
 subprocess.run([str(build/'pairing-test')],check=True)
 archive=artifacts/'org.troyborg.weatherhorde.plasmoid'
 with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
-    for file in sorted(package.rglob('*')):
-        if file.is_file(): z.write(file,file.relative_to(package))
+    for file in package_files(package):
+        z.write(file,file.relative_to(package))
     for name in ('holiday_catalog.json','holiday_themes.json'):
         z.write(root/name,'contents/data/'+name)
 # Backend runtime artifact includes data beside modules; no cwd dependency.
@@ -36,10 +37,10 @@ command=['kpackagetool6','--type','Plasma/Applet','--packageroot',str(validation
 p=subprocess.run(command,capture_output=True,text=True,check=True)
 receipt={'archive':str(archive),'bytes':archive.stat().st_size,'sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),
          'validation_root':str(validation),'command':command,'output':p.stdout+p.stderr,'live_plasma_installed':False}
-for file in package.rglob('*'):
-    if file.is_file():
-        target=validation/package.name/file.relative_to(package)
-        assert target.read_bytes()==file.read_bytes(),target
+with zipfile.ZipFile(archive) as z:
+    for name in z.namelist():
+        target=validation/package.name/name
+        assert target.read_bytes()==z.read(name),target
 receipt['readback_matches_source']=True
 (artifacts/'package-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
 print(json.dumps(receipt,indent=2))

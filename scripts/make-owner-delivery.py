@@ -10,6 +10,7 @@ import shlex
 import subprocess
 import sys
 import tarfile
+from public_artifacts import public_receipt
 
 
 def build(output):
@@ -33,7 +34,9 @@ def build(output):
             member.uid = member.gid = 0; member.uname = member.gname = ''
             target.addfile(member, original.extractfile(member) if member.isfile() else None)
         for path in (package, root/'artifacts/package-receipt.json'):
-            data = path.read_bytes(); info = tarfile.TarInfo(str(path.relative_to(root)))
+            data = (json.dumps(public_receipt(receipt), sort_keys=True).encode() + b'\n'
+                    if path.name == 'package-receipt.json' else path.read_bytes())
+            info = tarfile.TarInfo(str(path.relative_to(root)))
             info.size = len(data); info.mode = 0o644
             target.addfile(info, io.BytesIO(data))
     bootstrap = output/'owner-bootstrap.py'

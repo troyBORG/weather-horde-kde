@@ -1,6 +1,6 @@
 # Weather Horde KDE
 
-A KDE Plasma 6 widget and authenticated loopback controller for weather-aware wallpaper previews using local ComfyUI. The source snapshot reports version **0.1.11**; that is not a Git release tag or proof of a loaded deployment.
+A KDE Plasma 6 widget and authenticated loopback controller for weather-aware wallpaper previews using local ComfyUI. The source snapshot reports version **0.1.11**; a version or Git tag is not proof of a loaded deployment.
 
 **Experimental source release.** Owner and Comfy installation paths are explicit configuration; geographic defaults and some legacy recovery targets remain site-specific. Read [deployment](docs/deployment.md), [security](SECURITY.md), and [licensing status](docs/licensing.md) before installation or redistribution. No project-wide license grant has been invented.
 
@@ -28,6 +28,16 @@ Prompts are not pixel constraints. Synthetic fixture images and passing tests do
 
 ## Requirements and build
 
+GitHub Actions runs native Plasma 6/Qt6 and fixture checks on PRs and branch
+pushes. Successful main pushes publish unique prereleases; matching new version
+tags publish stable releases, using the exact tested artifacts. Neither deploys
+anything. See [CI and release policy](docs/ci-releases.md) for isolation, pinned
+toolchains, artifact privacy, permissions and the existing-tag caveat.
+
+Full test discovery also needs PyYAML, the Plasma desktop shell package and
+systemd manual pages/man-db for real unit verification. The CI container supplies
+these dependencies; missing dependencies must not be counted as a passing suite.
+
 Linux, Python 3 with Pillow, Plasma 6, Qt 6 development tools (Core/Qml/Quick), CMake, a C++17 compiler, KPackage including `kpackagetool6`, libplasma development files, D-Bus, systemd user tools and Node.js for the test harness. Runtime display discovery and wallpaper operations also require the applicable KDE command-line/session tools. Generation requires a separately installed local ComfyUI, compatible checkpoints/upscaler and suitable NVIDIA telemetry/GPU capacity. Dependency versions used for verification are recorded in [testing](docs/testing.md).
 
 In a disposable source copy, not the running controller tree:
@@ -53,4 +63,4 @@ Recovery receipts, owner settings/tokens, generated wallpapers, desktop screensh
 
 ## Development and provenance
 
-Development and publication preparation were AI-assisted, with human authorization and review gates. This is not a claim that a human personally authored every line. See [truthful history](docs/history.md). No CI badge or remote publication verification is claimed. Astronomy Engine is preserved with its original [MIT license](ASTRONOMY-LICENSE.txt) and [provenance](ASTRONOMY-PROVENANCE.json).
+Development and publication preparation were AI-assisted, with human authorization and review gates. This is not a claim that a human personally authored every line. See [truthful history](docs/history.md). Consult [Actions runs](https://github.com/troyBORG/weather-horde-kde/actions) for actual per-commit CI results rather than inferring a pass from workflow presence. Astronomy Engine is preserved with its original [MIT license](ASTRONOMY-LICENSE.txt) and [provenance](ASTRONOMY-PROVENANCE.json).

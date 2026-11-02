@@ -1,0 +1,68 @@
+name: Checks and releases
+
+on:
+  pull_request:
+  push:
+    branches: ['**']
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Native Plasma 6 and fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build pinned Arch toolchain
+        run: docker build --tag weather-horde-ci .github/ci
+      - name: Native package, full suite, and public artifacts
+        env:
+          CI_REF: ${{ github.ref }}
+          CI_SHA: ${{ github.sha }}
+        run: |
+          docker create --name native --network none --cap-drop ALL --security-opt no-new-privileges \
+            --mount type=bind,source="$GITHUB_WORKSPACE",target=/source,readonly \
+            --env CI_REF --env CI_SHA weather-horde-ci \
+            bash /source/scripts/ci_container.sh
+          docker start --attach native
+          docker cp native:/home/ci/public ./public
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: public-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: public/
+          if-no-files-found: error
+          retention-days: 14
+          include-hidden-files: false
+          archive: true
+          overwrite: false
+
+  release:
+    name: Publish tested assets
+    needs: checks
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ github.run_id }}-${{ github.run_attempt }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: public-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: public
+          skip-decompress: false
+          digest-mismatch: error
+      - name: Verify hashes, publish draft, verify uploaded bytes, then expose release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci_release.py
