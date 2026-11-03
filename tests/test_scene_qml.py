@@ -65,7 +65,8 @@ Item {
    widget.refreshStatus()
    step=5
   }else if(step===5 && widget.sceneSupported){
-   widget.fullRepresentationItem.contentItem.contentY=find(widget.fullRepresentationItem,"sceneControlsGroup").y
+   find(widget.fullRepresentationItem,"sectionTabs").currentIndex=2
+   find(widget.fullRepresentationItem,"pageScroll").contentItem.contentY=0
    step=6
   }else if(step===6){
    const options=find(widget.fullRepresentationItem,"calendarOptionsToggle")
@@ -80,6 +81,14 @@ Item {
    find(widget.fullRepresentationItem,"holidayPreviewDate").text="2026-10-31"
    find(widget.fullRepresentationItem,"holidayPreviewButton").clicked();step=32
   }else if(step===32 && widget.previewText.indexOf("fixture_weather")>=0){
+   const panorama=find(widget.fullRepresentationItem,"connectedPanoramaToggle")
+   if(!panorama || !panorama.enabled){fail("PANORAMA_CONTROL_MISSING");return}
+   panorama.currentIndex=1;panorama.activated(1);step=33
+  }else if(step===33 && widget.connectedPanorama){
+   if(find(widget.fullRepresentationItem,"monitorSceneSelector").enabled){fail("PANORAMA_OVERRIDE_ENABLED");return}
+   const panorama=find(widget.fullRepresentationItem,"connectedPanoramaToggle")
+   panorama.currentIndex=0;panorama.activated(0);step=34
+  }else if(step===34 && !widget.connectedPanorama){
    if(widget.automationEnabled){fail("THEMES_ENABLED_AUTO");return}
    console.log("SCENE_QML_PASS");Qt.quit()
   }

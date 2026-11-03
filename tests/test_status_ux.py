@@ -38,6 +38,9 @@ Item {
  Timer { id:opened; interval:300; onTriggered: {
  try {
    check(widget.statusTitle === "Not paired", "unpaired")
+   label(widget.fullRepresentationItem,"sectionTabs").currentIndex=3
+   label(widget.fullRepresentationItem,"testingDisclosure").checked=true
+   label(widget.fullRepresentationItem,"diagnosticsDisclosure").checked=true
    let toggle=label(widget.fullRepresentationItem,"testingOverrideToggle")
    let warning=label(widget.fullRepresentationItem,"testingOverrideRisk")
    check(toggle && toggle.visible && !toggle.checked && toggle.width>100,"override default OFF visible")
@@ -63,6 +66,7 @@ Item {
    }
    widget.acceptStatus({state:"quarantined",guard:{decision:"safe"},interval_minutes:60,render_enabled:true,quarantine:{decision:"game_active",reason:"game_process_detected",at:1700000000},render_request:{state:"quarantined",reason:"historical game_active",prompt_id:"fixture-job"}})
    check(widget.statusReason.indexOf("game_active")>=0 && widget.statusReason.indexOf("Current guard: safe")>=0,"historical quarantine distinct from current guard")
+   label(widget.fullRepresentationItem,"sectionTabs").currentIndex=0
    let action=label(widget.fullRepresentationItem,"monitorActionNotice")
    check(action && action.visible && action.text.indexOf("fixture-job")>=0,"prompt ID visible beside Apply controls")
    widget.acceptStatus({state:"idle",guard:{decision:"safe"},automation_enabled:true,interval_minutes:60,catch_up_refresh:true,refresh:{pending:["TEST"],waiting_reason:"settling",settling_seconds:40,retry_seconds:0,last_success:{image_wallpaper:{TEST:1700000000}}}})
@@ -89,6 +93,7 @@ Item {
    widget.acceptStatus({state:"idle",guard:{decision:"game_active"},automation_enabled:false,interval_minutes:60,render_enabled:true,api_version:1,capabilities:{testing_override:true},testing_override:{active:true,remaining_seconds:600}})
    check(toggle.checked,"server-confirmed override ON")
    check(widget.statusTitle.indexOf("Testing override")>=0,"override prominent")
+   label(widget.fullRepresentationItem,"sectionTabs").currentIndex=3
    let countdown=label(widget.fullRepresentationItem,"testingOverrideCountdown")
    check(countdown && countdown.visible && countdown.text.indexOf("600")>=0,"visible countdown")
    widget.clockNow=widget.lastStatusCheck+601000
@@ -120,5 +125,5 @@ Item {
             self.assertEqual(p.returncode,0,output)
             self.assertIn('STATUS_UX_PASS',output)
             for line in output.splitlines():
-                self.assertTrue(line.startswith(('kf.windowsystem: Could not find any platform plugin','Failed to create wl_display',"kf.plasma.quick: Couldn't create KWindowShadow",'This plugin does not support setting window masks','PLASMA_PACKAGE_ROOT_PASS','qml: STATUS_UX_PASS')),line)
+                self.assertTrue(line.startswith(('kf.windowsystem: Could not find any platform plugin','Failed to create wl_display',"kf.plasma.quick: Couldn't create KWindowShadow",'This plugin does not support setting window masks','This plugin does not support propagateSizeHints()','PLASMA_PACKAGE_ROOT_PASS','qml: STATUS_UX_PASS')),line)
             print(output)

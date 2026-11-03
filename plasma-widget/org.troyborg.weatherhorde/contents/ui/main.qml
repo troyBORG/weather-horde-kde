@@ -172,6 +172,10 @@ PlasmoidItem {
     property string sceneMonitor: ""
     readonly property var sceneKeys: ["rural","townpark","woodland","urban","river","random"]
     readonly property var sceneLabels: ["Rural / farmland", "Town park", "Woodland edge", "Small-town street", "Riverbank", "Random — new scene each generation"]
+    property bool connectedPanorama: false
+    readonly property string widgetBuild: "0.1.11 / sections-1 / panorama"
+    property string runtimeBuild: "Not verified"
+    property bool panoramaSupported: false
     property bool sceneSupported: false
     property bool modelSupported: false
     property string sceneKind: "rural"
@@ -194,6 +198,9 @@ PlasmoidItem {
         calendarDetails = cal ? JSON.stringify(cal, null, 2) : "Owner controller update required"
         imageCalendarSummary = status.image_preview && status.image_preview.scene ? "Image receipt: " + (status.image_preview.scene.selected_theme || "No decoration") + " • " + (status.image_preview.scene.calendar_local_date || "legacy date unknown") : "No image calendar receipt"
         rotationSupported = !!status.capabilities && status.capabilities.scene_rotation === true
+        runtimeBuild = status.source_revision || "Not supplied by controller"
+        connectedPanorama = status.connected_panorama === true
+        panoramaSupported = !!status.capabilities && status.capabilities.connected_panorama === true
         sceneOverrides = status.scene_overrides || ({})
         sceneSupported = !!status.capabilities && status.capabilities.scene_controls === true
         modelSupported = !!status.capabilities && status.capabilities.model_selection === true
@@ -421,82 +428,112 @@ PlasmoidItem {
         ToolTip.visible: hovered
         ToolTip.text: root.statusDetails
     }
-    fullRepresentation: ScrollView {
+    fullRepresentation: ColumnLayout {
         id: fullView
-        implicitWidth: 440
+        implicitWidth: 460
         implicitHeight: 700
-        clip: true
-        contentWidth: availableWidth
-        ColumnLayout {
-            width: fullView.availableWidth
-            spacing: 10
-            Label { text: root.applySupported ? "Weather Horde · Manual apply" : "Weather Horde · Preview only"; font.bold: true; font.pointSize: 14 }
-            Label {
-                Layout.fillWidth: true; wrapMode: Text.Wrap
-                objectName: "rendererSummary"
-                text: root.applySupported ? "Generate a preview, inspect it, select one matching monitor, then click Apply. Optional Auto generate + apply is a separate opt-in mode." : !root.online ? "Image rendering configuration not verified — controller disconnected. Wallpaper application remains locked off." : root.renderEnabled ? "Manual image previews enabled; wallpaper application remains locked off." : "Image rendering is not configured. Wallpaper application remains locked off."
-            }
-            Label { objectName: "expandedStatusTitle"; text: root.statusTitle; font.bold: true; font.pointSize: 13; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Label { objectName: "connectionSummary"; text: root.connectionSummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Label { text: root.statusReason; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Label { text: root.automationSummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Label { text: "Controller: " + root.serviceVersion; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Label { objectName: "comfyServiceStatus"; text: root.comfySummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Label { objectName: "renderActionNotice"; text: root.actionNotice; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Label { text: root.checkSummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Label { text: "Activity guards remain enforced unless testing override is explicitly confirmed."; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            GroupBox {
-                title: "Temporary testing override"
+        spacing: 8
+        Label { text: "Weather Horde"; font.bold: true; font.pointSize: 14 }
+        Label { objectName: "expandedStatusTitle"; text: root.statusTitle; font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Label { objectName: "connectionSummary"; text: root.connectionSummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Label { objectName: "persistentSafetyReason"; text: root.statusReason; Layout.fillWidth: true; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight; ToolTip.visible: reasonHover.hovered; ToolTip.text: text; HoverHandler { id: reasonHover } }
+        Label { text: root.automationSummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Label { visible: root.overrideActive; text: "Testing override ON · " + root.overrideRemaining + "s remaining · Auto paused"; font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Label { objectName: "renderActionNotice"; visible: text.length > 0; text: root.actionNotice; Layout.fillWidth: true; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight }
+        TabBar {
+            id: sectionTabs
+            objectName: "sectionTabs"
+            Layout.fillWidth: true
+            onCurrentIndexChanged: pageScroll.contentItem.contentY = 0
+            TabButton { objectName: "wallpaperTab"; text: "Wallpaper" }
+            TabButton { objectName: "scheduleTab"; text: "Schedule" }
+            TabButton { objectName: "sceneTab"; text: "Scene" }
+            TabButton { objectName: "advancedTab"; text: "Advanced" }
+        }
+        ScrollView {
+            id: pageScroll
+            objectName: "pageScroll"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.vertical.policy: contentHeight > availableHeight ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+            ColumnLayout {
+                width: pageScroll.availableWidth
+                spacing: 8
+            ColumnLayout {
+                objectName: "wallpaperPage"
                 Layout.fillWidth: true
-                ColumnLayout {
-                    anchors.fill: parent
-                    CheckBox {
-                        id: riskConfirmation
-                        objectName: "testingOverrideRisk"
-                        text: "I accept stutter and OOM risk"
+                visible: sectionTabs.currentIndex === 0
+                Label { text: root.connectedPanorama ? "Layout: connected panorama" : "Layout: independent wallpapers"; font.bold: true }
+                    ComboBox {
+                        objectName: "connectedPanoramaToggle"
                         Layout.fillWidth: true
-                        enabled: !root.overrideActive && !root.busy
-                    }
-                    Switch {
-                        objectName: "testingOverrideToggle"
-                        text: root.overrideActive ? "Testing override ON" : "Testing override OFF"
-                        checked: root.overrideActive
-                        enabled: root.online && root.overrideSupported && !root.busy && (root.overrideActive || riskConfirmation.checked)
-                        onClicked: {
-                            const desired = checked
-                            checked = Qt.binding(function() { return root.overrideActive })
-                            root.setTestingOverride(desired)
-                            riskConfirmation.checked = false
+                        model: ["Independent wallpapers", "Connected panorama — all monitors"]
+                        currentIndex: root.connectedPanorama ? 1 : 0
+                        enabled: root.online && root.panoramaSupported && !root.busy
+                        onActivated: {
+                            const desired = currentIndex === 1
+                            currentIndex = Qt.binding(function() { return root.connectedPanorama ? 1 : 0 })
+                            root.saveSettings({connected_panorama:desired})
                         }
                     }
                     Label {
-                        objectName: "testingOverrideCountdown"
-                        Layout.fillWidth: true; wrapMode: Text.Wrap
-                        text: !root.overrideSupported ? (root.online ? "Connected to controller " + root.serviceVersion + ". Override unsupported: run owner rollout, not Pair. Checkbox acknowledges risk only." : "Connect to verify override support.") : root.overrideActive ? root.overrideRemaining + "s remaining · automation paused · manual image previews only" : "OFF · expires after 10 minutes or controller restart. No wallpaper changes."
+                        visible: root.connectedPanorama
+                        text: "One global scene across the logical desktop, including vertical offsets. Monitor scene overrides are kept but ignored. Generation covers all monitors; manual Apply/Restore still acts on one selected monitor. Auto applies validated crops in sequence, with safety checks before every write."
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
-                }
-            }
-            Button { text: "Reconnect automatically"; enabled: !root.busy; onClicked: root.reconnectAutomatically() }
-            RowLayout {
+                Label { text: !root.online ? "Connect to verify layout support." : !root.panoramaSupported ? "Panorama requires a newer controller; installed widget alone is not enough." : "Independent: a separate image per monitor. Panorama: one scene across all monitors."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+            GroupBox {
+                title: "Monitor / regeneration"
                 Layout.fillWidth: true
-                TextField {
-                    id: pairingToken
-                    Layout.fillWidth: true
-                    placeholderText: "Manual pairing fallback (session only)"
-                    echoMode: TextInput.Password
-                    onAccepted: { root.pairManually(text); text = "" }
-                }
-                Button {
-                    text: "Pair"; enabled: !root.busy
-                    onClicked: { root.pairManually(pairingToken.text); pairingToken.text = "" }
+                ColumnLayout {
+                    anchors.fill: parent
+                    Label { text: root.displayNotice; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    ComboBox {
+                        Layout.fillWidth: true
+                        model: ["All active monitors"].concat(root.monitors.map(function(m) { return m.id + " — " + m.width + "×" + m.height + " " + m.orientation }))
+                        currentIndex: root.selectedTarget === "all" ? 0 : root.monitors.findIndex(function(m) { return m.id === root.selectedTarget }) + 1
+                        onActivated: { root.selectedTarget = currentIndex === 0 ? "all" : root.monitors[currentIndex-1].id; root.refreshStatus() }
+                    }
+                    RowLayout {
+                        Button { text: "Preview prompt"; enabled: root.online && !root.busy; onClicked: { root.preview(); sectionTabs.currentIndex = 3; diagnostics.checked = true } }
+                        Button {
+                            text: "Generate now"; enabled: root.online && !root.busy
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Normally deferred during games, VR, or unsafe GPU use. Confirmed testing override bypasses activity only, never ownership / queue / VRAM checks."
+                            onClicked: root.generate()
+                        }
+                    }
+                    Button {
+                        objectName: "applyPreviewButton"
+                        text: "Apply validated preview to " + (root.selectedTarget === "all" ? "selected monitor" : root.selectedTarget)
+                        enabled: root.online && !root.busy && root.applySupported && root.imagePreviewReady && root.previewTargets.indexOf(root.selectedTarget) >= 0
+                        onClicked: root.applyPreview()
+                    }
+                    Button {
+                        text: "Restore previous wallpaper"
+                        enabled: root.online && !root.busy && root.applySupported && root.restoreTargets.indexOf(root.selectedTarget) >= 0
+                        onClicked: root.restoreWallpaper()
+                    }
+                    Label { objectName: "applyEligibility"; text: root.applyEligibilityText; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                    Label { objectName: "monitorActionNotice"; text: root.actionNotice; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 }
             }
-            Label {
-                Layout.fillWidth: true; wrapMode: Text.Wrap
-                text: "Guard: " + root.guardState + " · " + root.controllerState
-                font.bold: true
+            Image {
+                Layout.fillWidth: true; Layout.preferredHeight: 240
+                visible: root.imagePreviewSource.length > 0
+                source: root.imagePreviewSource
+                fillMode: Image.PreserveAspectFit
+                cache: false
+                onStatusChanged: root.imagePreviewReady = status === Image.Ready
             }
-            BusyIndicator { running: root.busy; visible: running; Layout.preferredHeight: 28 }
+            Label { text: root.imagePreviewCaption; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            }
+            ColumnLayout {
+                objectName: "schedulePage"
+                Layout.fillWidth: true
+                visible: sectionTabs.currentIndex === 1
             GroupBox {
                 title: "Automation — " + root.automationScopeText
                 Layout.fillWidth: true
@@ -528,7 +565,7 @@ PlasmoidItem {
                     Label { text: "Auto generate + apply changes the chosen target(s) at the interval only while safe. Games/VR defer background work; testing overrides never authorize Auto. OFF until explicitly enabled."; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     Switch {
                         objectName: "catchupRefreshToggle"
-                        text: "Catch up overdue after unlock / gaming; pause while locked"
+                        text: "Refresh after wake / unlock; pause while locked"
                         checked: root.catchupEnabled
                         enabled: root.online && !root.busy
                         onClicked: {
@@ -538,9 +575,10 @@ PlasmoidItem {
                         }
                     }
                     Label { objectName: "refreshStatus"; text: root.refreshSummary; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                    Label { text: "Catch-up waits for 60 seconds of continuously safe observations. It preserves Auto, mode, target and interval; enabling catch-up does not enable Auto."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    Label { text: "Wake/unlock requests a fresh update for selected targets, even if recent. Work waits for a safe, unlocked session; no extra settling delay. Failed attempts retry after 1, 5 and 15 minutes, then require attention. This switch never enables Auto."; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     Label { text: "Interval" }
                     ComboBox {
+                        objectName: "scheduleInterval"
                         Layout.fillWidth: true
                         model: ["5 minutes", "10 minutes", "15 minutes", "30 minutes", "1 hour", "2 hours", "4 hours", "8 hours", "12 hours", "Daily"]
                         currentIndex: root.intervals.indexOf(root.intervalMinutes)
@@ -553,6 +591,11 @@ PlasmoidItem {
                     }
                 }
             }
+            }
+            ColumnLayout {
+                objectName: "scenePage"
+                Layout.fillWidth: true
+                visible: sectionTabs.currentIndex === 2
             GroupBox {
                 title: "Location"
                 Layout.fillWidth: true
@@ -604,7 +647,7 @@ PlasmoidItem {
                         objectName: "monitorSceneSelector"; Layout.fillWidth: true
                         model: ["Inherit global scene"].concat(root.sceneLabels)
                         currentIndex: root.sceneOverrides[root.sceneMonitor] ? root.sceneKeys.indexOf(root.sceneOverrides[root.sceneMonitor])+1 : 0
-                        enabled: root.online && root.rotationSupported && !root.busy && root.sceneMonitor.length > 0
+                        enabled: root.online && root.rotationSupported && !root.connectedPanorama && !root.busy && root.sceneMonitor.length > 0
                         onActivated: {
                             const overrides = Object.assign({}, root.sceneOverrides)
                             if (currentIndex === 0) delete overrides[root.sceneMonitor]
@@ -613,11 +656,11 @@ PlasmoidItem {
                         }
                     }
                     Label {
-                        text: root.rotationSupported ? "Random chooses per monitor when generation starts, avoiding its last scene. Status checks never rotate it. Before the first render, prompt preview is illustrative. To change wallpapers automatically, select Auto generate + apply and enable automation above; GPU/game/VR safeguards still apply." : "Random and per-monitor scenes require owner controller rollout."
+                        text: root.rotationSupported ? "Random avoids the last scene on each monitor. Prompt preview is illustrative until rendered. Configure Auto in Schedule." : "Random and per-monitor scenes require owner controller rollout."
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     Label { objectName: "calendarSummary"; text: root.calendarSummary; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                    Label { text: root.imageCalendarSummary + " — independent of current prompt; not proof of displayed wallpaper"; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    Label { visible: calendarOptions.checked; text: root.imageCalendarSummary + " — independent of current prompt; not proof of displayed wallpaper"; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     CheckBox { id: calendarOptions; objectName: "calendarOptionsToggle"; text: "Season and holiday options" }
                     ColumnLayout {
                         visible: calendarOptions.checked; Layout.fillWidth: true
@@ -627,7 +670,7 @@ PlasmoidItem {
                         ComboBox { objectName: "holidayPresetSelector"; model: ["Mainstream + applicable Iowa", "Metadata only"]; currentIndex: root.calendarSettings.holiday_preset === "metadata_only" ? 1 : 0; onActivated: root.saveSettings({holiday_preset:currentIndex===0 ? "mainstream_iowa" : "metadata_only"}) }
                         ComboBox { objectName: "holidayDateModeSelector"; model: ["Actual celebration date", "Employee observed date"]; currentIndex: root.calendarSettings.holiday_date_mode === "observed" ? 1 : 0; onActivated: root.saveSettings({holiday_date_mode:currentIndex===0 ? "actual" : "observed"}) }
                         ComboBox { objectName: "calendarJurisdictionSelector"; model: ["Use confirmed location jurisdiction", "Explicit Iowa calendar correction"]; currentIndex: root.calendarSettings.calendar_subdivision === "IA" ? 1 : 0; onActivated: root.saveSettings({calendar_subdivision:currentIndex===0 ? "" : "IA"}) }
-                        Label { text: "Calendar correction does not move weather coordinates. Religious packs are excluded pending verified dates. Remembrance decoration is opt-in. Themes never enable Auto; calendar-enabled Auto uses the existing safe-grace coordinator."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                        Label { text: "Calendar correction does not move weather coordinates. Religious packs are excluded pending verified dates. Remembrance decoration is opt-in. Themes never enable Auto; calendar-enabled Auto uses the safe requested-refresh policy."; wrapMode: Text.Wrap; Layout.fillWidth: true }
                         TextField { id: disabledHolidays; objectName: "disabledHolidaysInput"; Layout.fillWidth: true; placeholderText: "Disabled holiday IDs, comma separated"; text: (root.calendarSettings.disabled_holidays || []).join(",") }
                         Button { text: "Save disabled holidays"; enabled: root.online && !root.busy; onClicked: root.saveSettings({disabled_holidays:disabledHolidays.text.split(",").map(function(x){return x.trim()}).filter(function(x){return x.length>0})}) }
                         TextField { id: enabledHolidays; Layout.fillWidth: true; placeholderText: "Opt-in holiday IDs, comma separated"; text: (root.calendarSettings.enabled_holidays || []).join(",") }
@@ -649,6 +692,44 @@ PlasmoidItem {
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     Label { text: root.weatherSource; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    Button { text: "Discover local Comfy models"; enabled: root.online && root.modelSupported && !root.busy; onClicked: root.request("POST","/v1/models/refresh",{},function(status){root.acceptStatus(status)}) }
+                    ComboBox {
+                        objectName: "modelSelector"; Layout.fillWidth: true
+                        model: root.localModels.map(function(m){return m.id + " · " + m.architecture + " · " + m.native_resolution + " native · ≥" + m.min_free_mib + " MiB free"})
+                        currentIndex: root.localModels.findIndex(function(m){return m.id===root.selectedCheckpoint})
+                        enabled: root.online && root.modelSupported && !root.busy && root.localModels.length>0
+                        onActivated: root.saveSettings({checkpoint:root.localModels[currentIndex].id})
+                    }
+                    Label { text: "Selected: " + root.selectedCheckpoint + "\n" + root.modelNotice + "\nTraining resolution is not output resolution. Bounded exact-aspect generation → 2× upscaler → native-size Lanczos; does not guarantee fine detail."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                }
+            }
+            }
+            ColumnLayout {
+                objectName: "advancedPage"
+                Layout.fillWidth: true
+                visible: sectionTabs.currentIndex === 3
+                ToolButton { id: pairing; objectName: "pairingDisclosure"; checkable: true; text: (checked ? "▾ " : "▸ ") + "Connection and manual pairing" }
+                ColumnLayout {
+                    visible: pairing.checked; Layout.fillWidth: true
+            Button { text: "Reconnect automatically"; enabled: !root.busy; onClicked: root.reconnectAutomatically() }
+            RowLayout {
+                Layout.fillWidth: true
+                TextField {
+                    id: pairingToken
+                    Layout.fillWidth: true
+                    placeholderText: "Manual pairing fallback (session only)"
+                    echoMode: TextInput.Password
+                    onAccepted: { root.pairManually(text); text = "" }
+                }
+                Button {
+                    text: "Pair"; enabled: !root.busy
+                    onClicked: { root.pairManually(pairingToken.text); pairingToken.text = "" }
+                }
+            }
+                }
+                ToolButton { id: observation; objectName: "observationDisclosure"; checkable: true; text: (checked ? "▾ " : "▸ ") + "Manual weather observation" }
+                ColumnLayout {
+                    visible: observation.checked; Layout.fillWidth: true
                     Label { text: "Manual observation: enter current conditions at the confirmed ZIP. Expires automatically; never inferred from an old photograph."; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     ComboBox { id: observationCondition; Layout.fillWidth: true; currentIndex: 2; model: ["Clear", "Partly cloudy", "Overcast", "Fog", "Drizzle", "Rain", "Snowfall", "Thunderstorm"] }
                     RowLayout {
@@ -677,72 +758,72 @@ PlasmoidItem {
                         onClicked: root.setObservation({observed_at:Date.now()/1000-observationAge.value*60,ttl_minutes:observationTtl.value,temperature_f:observationTemp.value,cloud_cover_percent:observationCloud.value,precipitation_mm:Number(observationRain.text),weather_code:[0,2,3,45,51,61,71,95][observationCondition.currentIndex],location_zip:root.confirmedZip})
                     }
                     Button { text: "Revert to automatic weather"; enabled: root.online && root.sceneSupported && !root.busy; onClicked: root.setObservation({enabled:false}) }
-                    Button { text: "Discover local Comfy models"; enabled: root.online && root.modelSupported && !root.busy; onClicked: root.request("POST","/v1/models/refresh",{},function(status){root.acceptStatus(status)}) }
-                    ComboBox {
-                        objectName: "modelSelector"; Layout.fillWidth: true
-                        model: root.localModels.map(function(m){return m.id + " · " + m.architecture + " · " + m.native_resolution + " native · ≥" + m.min_free_mib + " MiB free"})
-                        currentIndex: root.localModels.findIndex(function(m){return m.id===root.selectedCheckpoint})
-                        enabled: root.online && root.modelSupported && !root.busy && root.localModels.length>0
-                        onActivated: root.saveSettings({checkpoint:root.localModels[currentIndex].id})
-                    }
-                    Label { text: "Selected: " + root.selectedCheckpoint + "\n" + root.modelNotice + "\nTraining resolution is not output resolution. Bounded exact-aspect generation → 2× upscaler → native-size Lanczos; does not guarantee fine detail."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                }
+                ToolButton { id: seed; objectName: "seedDisclosure"; checkable: true; text: (checked ? "▾ " : "▸ ") + "Comparison seed" }
+                ColumnLayout {
+                    visible: seed.checked; Layout.fillWidth: true
                     TextField { id: comparisonSeed; placeholderText: "Same-seed comparison (0–4294967295)"; Layout.fillWidth: true; validator: RegularExpressionValidator { regularExpression: /[0-9]{1,10}/ } }
                     Button { text: "Set comparison seed"; enabled: root.online && root.modelSupported && !root.busy && comparisonSeed.acceptableInput; onClicked: root.saveSettings({comparison_seed:Number(comparisonSeed.text)}) }
                     Button { text: "Use random seeds"; enabled: root.online && root.modelSupported && !root.busy; onClicked: root.saveSettings({comparison_seed:null}) }
                     Label { text: "Compare manually, one model and one monitor at a time. Same seed does not guarantee comparable composition across architectures. GPU/game/VR guards still apply."; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                    TextArea { Layout.fillWidth: true; Layout.preferredHeight: 120; text: root.evidenceText; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap }
                 }
-            }
+                ToolButton { id: testing; objectName: "testingDisclosure"; checkable: true; text: (checked ? "▾ " : "▸ ") + "Temporary testing override" }
+                ColumnLayout {
+                    visible: testing.checked; Layout.fillWidth: true
             GroupBox {
-                title: "Monitor / regeneration"
+                title: "Temporary testing override"
                 Layout.fillWidth: true
                 ColumnLayout {
                     anchors.fill: parent
-                    Label { text: root.displayNotice; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                    ComboBox {
+                    CheckBox {
+                        id: riskConfirmation
+                        objectName: "testingOverrideRisk"
+                        text: "I accept stutter and OOM risk"
                         Layout.fillWidth: true
-                        model: ["All active monitors"].concat(root.monitors.map(function(m) { return m.id + " — " + m.width + "×" + m.height + " " + m.orientation }))
-                        currentIndex: root.selectedTarget === "all" ? 0 : root.monitors.findIndex(function(m) { return m.id === root.selectedTarget }) + 1
-                        onActivated: { root.selectedTarget = currentIndex === 0 ? "all" : root.monitors[currentIndex-1].id; root.refreshStatus() }
+                        enabled: !root.overrideActive && !root.busy
                     }
-                    RowLayout {
-                        Button { text: "Preview prompt"; enabled: root.online && !root.busy; onClicked: root.preview() }
-                        Button {
-                            text: "Generate now"; enabled: root.online && !root.busy
-                            ToolTip.visible: hovered
-                            ToolTip.text: "Normally deferred during games, VR, or unsafe GPU use. Confirmed testing override bypasses activity only, never ownership / queue / VRAM checks."
-                            onClicked: root.generate()
+                    Switch {
+                        objectName: "testingOverrideToggle"
+                        text: root.overrideActive ? "Testing override ON" : "Testing override OFF"
+                        checked: root.overrideActive
+                        enabled: root.online && root.overrideSupported && !root.busy && (root.overrideActive || riskConfirmation.checked)
+                        onClicked: {
+                            const desired = checked
+                            checked = Qt.binding(function() { return root.overrideActive })
+                            root.setTestingOverride(desired)
+                            riskConfirmation.checked = false
                         }
                     }
-                    Button {
-                        objectName: "applyPreviewButton"
-                        text: "Apply validated preview to " + (root.selectedTarget === "all" ? "selected monitor" : root.selectedTarget)
-                        enabled: root.online && !root.busy && root.applySupported && root.imagePreviewReady && root.previewTargets.indexOf(root.selectedTarget) >= 0
-                        onClicked: root.applyPreview()
+                    Label {
+                        objectName: "testingOverrideCountdown"
+                        Layout.fillWidth: true; wrapMode: Text.Wrap
+                        text: !root.overrideSupported ? (root.online ? "Connected to controller " + root.serviceVersion + ". Override unsupported: run owner rollout, not Pair. Checkbox acknowledges risk only." : "Connect to verify override support.") : root.overrideActive ? root.overrideRemaining + "s remaining · automation paused · manual image previews only" : "OFF · expires after 10 minutes or controller restart. No wallpaper changes."
                     }
-                    Button {
-                        text: "Restore previous wallpaper"
-                        enabled: root.online && !root.busy && root.applySupported && root.restoreTargets.indexOf(root.selectedTarget) >= 0
-                        onClicked: root.restoreWallpaper()
-                    }
-                    Label { objectName: "applyEligibility"; text: root.applyEligibilityText; Layout.fillWidth: true; wrapMode: Text.Wrap }
-                    Label { objectName: "monitorActionNotice"; text: root.actionNotice; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 }
             }
-            Image {
-                Layout.fillWidth: true; Layout.preferredHeight: 240
-                visible: root.imagePreviewSource.length > 0
-                source: root.imagePreviewSource
-                fillMode: Image.PreserveAspectFit
-                cache: false
-                onStatusChanged: root.imagePreviewReady = status === Image.Ready
+                }
+                ToolButton { id: diagnostics; objectName: "diagnosticsDisclosure"; checkable: true; text: (checked ? "▾ " : "▸ ") + "Build identity and diagnostics" }
+                ColumnLayout {
+                    visible: diagnostics.checked; Layout.fillWidth: true
+                    Label { objectName: "widgetBuildIdentity"; text: "Widget: " + root.widgetBuild; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    Label { objectName: "runtimeBuildIdentity"; text: "Controller: " + root.serviceVersion + "\nLoaded runtime: " + root.runtimeBuild; wrapMode: Text.WrapAnywhere; Layout.fillWidth: true }
+            Label {
+                Layout.fillWidth: true; wrapMode: Text.Wrap
+                objectName: "rendererSummary"
+                text: root.applySupported ? "Generate a preview, inspect it, select one matching monitor, then click Apply. Optional Auto generate + apply is a separate opt-in mode." : !root.online ? "Image rendering configuration not verified — controller disconnected. Wallpaper application remains locked off." : root.renderEnabled ? "Manual image previews enabled; wallpaper application remains locked off." : "Image rendering is not configured. Wallpaper application remains locked off."
             }
-            Label { text: root.imagePreviewCaption; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Label { objectName: "comfyServiceStatus"; text: root.comfySummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Label { text: root.checkSummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Label { text: "Activity guards remain enforced unless testing override is explicitly confirmed."; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                    TextArea { Layout.fillWidth: true; Layout.preferredHeight: 120; text: root.evidenceText; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap }
             TextArea {
                 Layout.fillWidth: true; Layout.preferredHeight: 190
                 text: root.previewText; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap
             }
             Button { text: "Refresh status"; enabled: !root.busy; onClicked: root.refreshStatus() }
+                }
+            }
+            }
         }
     }
 }

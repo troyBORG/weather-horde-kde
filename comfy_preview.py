@@ -219,7 +219,7 @@ class PreviewStore:
         self.root = Path(root)
         self.root.mkdir(parents=True,exist_ok=True,mode=0o700)
 
-    def save(self, raw, size, metadata, quarantined=False, guard=None):
+    def save(self, raw, size, metadata, quarantined=False, guard=None, publish=True):
         if len(raw) > MAX_BYTES: raise ValueError('Image too large')
         with Image.open(io.BytesIO(raw)) as image:
             if image.format not in ('PNG','JPEG','WEBP') or image.size != tuple(size) or image.width*image.height > MAX_FINAL_PIXELS or getattr(image,'n_frames',1) != 1:
@@ -244,7 +244,7 @@ class PreviewStore:
                 with open(temporary/name,'xb') as f:
                     os.chmod(temporary/name,0o600); f.write(content); f.flush(); os.fsync(f.fileno())
             temporary.rename(final)
-            if not quarantined:
+            if not quarantined and publish:
                 pointer = self.root/'latest.tmp'
                 pointer.write_text(identifier); pointer.chmod(0o600)
                 # Slow image encoding and fsync must not consume the remaining

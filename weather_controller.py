@@ -46,7 +46,7 @@ class Controller:
         self.observation = None
         self.override_deadline = 0.0
         self.override_generation = 0
-        self.settings = {'automation_enabled': False, 'automation_kind': 'prompt_preview', 'automation_target':'all', 'interval_minutes': 60, 'location': None}
+        self.settings = {'connected_panorama': False, 'automation_enabled': False, 'automation_kind': 'prompt_preview', 'automation_target':'all', 'interval_minutes': 60, 'location': None}
         from holiday_settings import DEFAULTS
         import copy
         self.settings.update(copy.deepcopy(DEFAULTS))
@@ -215,10 +215,18 @@ class Controller:
         def fetch(url):
             if url not in responses: responses[url] = fetch_json(url)
             return responses[url]
+        if self.settings.get('connected_panorama') and targets:
+            from panorama import plan_layout
+            layout = plan_layout(targets)
+            targets = [dict(id='__panorama__', width=layout['size'][0], height=layout['size'][1])]
         for target in targets:
             key = target['id']
-            requested = self.settings.get('scene_overrides', {}).get(key, self.settings.get('scene_kind','rural'))
+            requested = self.settings.get('scene_kind','rural') if self.settings.get('connected_panorama') else self.settings.get('scene_overrides', {}).get(key, self.settings.get('scene_kind','rural'))
             prior = self.resolved_scenes.get(key) or self.previews_by_target.get(key, {}).get('scene', {}).get('weather_evidence', {}).get('scene_kind')
+            if key == '__panorama__' and prior is None:
+                latest = max((r for r in self.previews_by_target.values() if r.get('panorama')),
+                             key=lambda r:r.get('generated_at',0), default={})
+                prior = latest.get('scene', {}).get('scene_selection', {}).get('resolved')
             actual = requested
             provisional = False
             if requested == 'random':
@@ -250,9 +258,10 @@ class Controller:
                     'comparison_seed':self.settings.get('comparison_seed'),
                     'framing':self.settings.get('framing','auto'), 'composition_version':COMPOSITION_VERSION,
                     'scene_overrides':dict(self.settings.get('scene_overrides',{})),
+                    'connected_panorama':self.settings.get('connected_panorama', False),
                     'scene_kind':self.settings.get('scene_kind','rural'), 'observation':self.observation_status(),
                     'comfy_service': self.comfy_service.status() if self.comfy_service else {'managed':False, 'state':'stopped', 'reason':'Service management not enabled'},
-                    'capabilities': {'model_selection':True, 'scene_controls':True, 'scene_rotation':True, 'composition_controls':True, 'testing_override': True, 'manual_apply': self.wallpaper is not None, 'scheduled_images': bool(self.checkpoint)},
+                    'capabilities': {'connected_panorama':True, 'model_selection':True, 'scene_controls':True, 'scene_rotation':True, 'composition_controls':True, 'testing_override': True, 'manual_apply': self.wallpaper is not None, 'scheduled_images': bool(self.checkpoint)},
                     'apply_blocker': ('Select one monitor and a matching validated saved preview; manual Apply needs no GPU generation' if self.wallpaper else 'Owner wallpaper adapter not configured; no wallpaper changes available'),
                     'restore_available': self.wallpaper.available() if self.wallpaper else [],
                     'testing_override': self.override_status(), 'state': self.state, 'last_error': self.last_error,
@@ -326,8 +335,15 @@ class Controller:
         import hashlib
         original_guard, override_receipt = policy or self.manual_policy()
         self.quarantine = None
+        layout = None
         def guard():
             decision = original_guard()
+            if layout:
+                from panorama import plan_layout
+                try:
+                    if plan_layout(self.displays) != layout: decision = 'layout_changed'
+                except (ValueError, KeyError, TypeError):
+                    decision = 'layout_changed'
             model_gate = self.model_gate()
             if model_gate != 'safe': decision = model_gate
             if decision != "safe" and self.quarantine is None:
@@ -340,6 +356,13 @@ class Controller:
         outstanding = journal.exists()
         try:
             if outstanding: raise ValueError('Unreconciled submission journal; inspect owned Comfy job before removing journal')
+            if self.settings.get('connected_panorama'):
+                from panorama import plan_layout, crop_master
+                targets = list(self.displays)
+                layout = plan_layout(targets)
+                if auto_apply:
+                    if self.wallpaper is None: raise ValueError('Wallpaper adapter not configured')
+                    for target in targets: self.wallpaper.preflight(target)
             if self.enforce_models:
                 self.refresh_models()
                 if self.model_gate() != 'safe': raise SubmissionDeferred(self.model_gate())
@@ -353,6 +376,9 @@ class Controller:
                 # Include selection provenance to preserve truthful receipts.
                 key = (target['width'], target['height'], scene['scene_selection']['resolved'], scene['scene_selection']['requested'])
                 groups.setdefault(key, ([], scene))[0].append(target['id'])
+            if layout:
+                for key, (_, scene) in list(groups.items()):
+                    groups[key] = ([t['id'] for t in targets], scene)
             seed = self.settings.get('comparison_seed')
             if seed is None: seed = secrets.randbits(32)
             profile = self.selected_profile()
@@ -406,14 +432,43 @@ class Controller:
                         metadata = {'generated_at':time.time(), 'prompt_id':job, 'testing_override':override_receipt, 'quarantine_evidence':self.quarantine, 'targets':ids, 'positive':scene['positive'],
                                     'negative':scene['negative'], 'scene':scene,
                                     'workflow_sha256':hashlib.sha256(json.dumps(workflow,sort_keys=True).encode()).hexdigest()}
-                        result = self.store.save(raw,size,metadata,quarantined=blocked,guard=guard)
-                        blocked = result['quarantined']
+                        if layout:
+                            crops = crop_master(raw, layout)
+                            results = {}
+                            for target in targets:
+                                crop_metadata = dict(metadata, targets=[target['id']], panorama={
+                                    'layout':layout, 'master_sha256':hashlib.sha256(raw).hexdigest()})
+                                results[target['id']] = self.store.save(crops[target['id']],
+                                    (target['width'],target['height']), crop_metadata,
+                                    quarantined=blocked, guard=guard, publish=False)
+                                blocked = blocked or results[target['id']]['quarantined']
+                            blocked = blocked or guard() != 'safe'
+                            if plan_layout(self.displays) != layout:
+                                blocked = True
+                            if blocked:
+                                from wallpaper import atomic_json
+                                for record in results.values():
+                                    record['quarantined'] = True
+                                    atomic_json(self.store.root/record['id']/'metadata.json', record)
+                            result = results[ids[0]]
+                        else:
+                            result = self.store.save(raw,size,metadata,quarantined=blocked,guard=guard)
+                            blocked = result['quarantined']
+                            results = {target:result for target in ids}
                         with self.lock:
                             self.state = 'quarantined' if blocked else 'image_preview_ready'
-                            self.render_results.append({'targets':ids,'state':self.state,'id':result['id']})
+                            if layout:
+                                for target_id, record in results.items():
+                                    self.render_results.append({'targets':[target_id],'state':self.state,'id':record['id']})
+                            else:
+                                self.render_results.append({'targets':ids,'state':self.state,'id':result['id']})
                             if not blocked:
                                 self.image_preview = result
-                                for target in ids: self.previews_by_target[target] = result
+                                for target in ids: self.previews_by_target[target] = results[target]
+                                if layout:
+                                    pointer = self.store.root/'latest.tmp'
+                                    pointer.write_text(result['id']); pointer.chmod(0o600)
+                                    pointer.replace(self.store.root/'latest')
                                 from wallpaper import atomic_json
                                 atomic_json(self.root/"previews-by-target.json", {target:record["id"] for target,record in self.previews_by_target.items()})
                         if refresh_id: self.refresh_event('render_complete', generation_id=refresh_id, targets=ids, quarantined=blocked, checkpoint=self.checkpoint, scene=scene.get('scene_selection'), weather_at=scene.get('observed_at'))
@@ -424,6 +479,8 @@ class Controller:
                             for target in targets:
                                 if target["id"] not in ids: continue
                                 if guard() != "safe": raise ValueError("Automatic apply deferred: activity or automation settings changed")
+                                if layout and plan_layout(self.displays) != layout:
+                                    raise ValueError('Connected panorama layout changed; generate again')
                                 if refresh_id or scene.get('calendar_context_hash'):
                                     from refresh_freshness import result_fresh
                                     from scene import solar_daypart, solar_elevation
@@ -432,7 +489,7 @@ class Controller:
                                     if not result_fresh(scene, instant, self.settings['interval_minutes']*60, daypart, self.calendar_now(instant) if scene.get('calendar_context_hash') else None):
                                         raise ValueError('Stale scene: fresh weather/daypart/calendar render required')
                                 try:
-                                    applied = self.wallpaper.apply(target, result["id"], guard)
+                                    applied = self.wallpaper.apply(target, results[target['id']]["id"], guard)
                                 except Exception as error:
                                     if refresh_id:
                                         with self.lock:
@@ -491,12 +548,13 @@ class Controller:
             f.flush(); os.fsync(f.fileno())
         p.replace(self.root / 'settings.json')
 
-    def target_displays(self, body):
+    def target_displays(self, body, *, connected=True):
         target = body.get('target', 'all')
         if not isinstance(target, str): raise ValueError('Invalid target')
         if target == 'all': return list(self.displays)
         targets = [d for d in self.displays if d['id'] == target]
         if not targets: raise ValueError('Target is not an active output')
+        if connected and self.settings.get('connected_panorama'): return list(self.displays)
         return targets
 
     def build_preview(self, body):
@@ -575,7 +633,7 @@ class Controller:
 
     def catchup_tick(self, now, monotonic_now):
         s = self.scheduler
-        selected = self.settings['automation_target']
+        selected = 'all' if self.settings.get('connected_panorama') else self.settings['automation_target']
         targets = [d['id'] for d in self.displays if selected == 'all' or d['id'] == selected]
         if self.settings['automation_kind'] == 'prompt_preview': targets = ['prompt']
         s.configure(self.settings['automation_enabled'] and not self.override_status()['active'],
@@ -610,6 +668,10 @@ class Controller:
             self._refresh_summary = summary
         self.save_refresh()
         if self.render_lock.locked() or (self.root/'inflight.json').exists(): return
+        if self.settings.get('connected_panorama') and s.pending and not s.active:
+            # A connected refresh is a complete scene, including fresh outputs.
+            # Preflight and track all writes, not only the initially stale subset.
+            s.request(reason, targets)
         action = s.next_action(now, monotonic_now)
         if not action: return
         self.refresh_event('job_requested', generation_id=action['generation_id'], targets=action['targets'], mode=action['mode'])
@@ -731,7 +793,9 @@ class Controller:
             if method == 'PUT' and path == '/v1/settings':
                 from holiday_settings import DEFAULTS, validate_settings
                 validate_settings(body)
-                if set(body) - set(DEFAULTS) - {'catch_up_refresh','checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
+                if set(body) - set(DEFAULTS) - {'connected_panorama','catch_up_refresh','checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
+                if 'connected_panorama' in body and type(body['connected_panorama']) is not bool:
+                    raise ValueError('connected_panorama must be boolean')
                 if 'catch_up_refresh' in body and type(body['catch_up_refresh']) is not bool:
                     raise ValueError('catch_up_refresh must be boolean')
                 if 'comparison_seed' in body and body['comparison_seed'] is not None and (type(body['comparison_seed']) is not int or not 0 <= body['comparison_seed'] <= 4294967295): raise ValueError('Seed must be an unsigned 32-bit integer or null for random')
@@ -747,7 +811,7 @@ class Controller:
                         key not in known or value not in SCENE_CHOICES for key, value in overrides.items()
                     ): raise ValueError('Invalid monitor scene override')
                 if 'framing' in body and body['framing'] not in FRAMING_MODES: raise ValueError('Invalid framing')
-                if self.render_lock.locked() and any(k in body for k in ('scene_kind','scene_overrides','framing')): raise ValueError('Wait for current preview')
+                if self.render_lock.locked() and any(k in body for k in ('connected_panorama','scene_kind','scene_overrides','framing')): raise ValueError('Wait for current preview')
                 update = dict(body)
                 if 'automation_kind' in body:
                     if body['automation_kind'] not in ('prompt_preview','image_preview','image_wallpaper'):
@@ -784,11 +848,20 @@ class Controller:
                 expected = 'Apply this validated preview' if path == '/v1/apply' else 'Restore previous wallpaper'
                 if body.get('confirmation') != expected: raise ValueError('Explicit wallpaper confirmation required')
                 if body.get('target','all') == 'all': raise ValueError('Choose one explicit monitor for wallpaper changes')
-                targets = self.target_displays(body)
+                targets = self.target_displays(body, connected=False)
                 if not self.render_lock.acquire(blocking=False): raise ValueError('Wait for current render before changing wallpaper')
                 try:
                     if path == '/v1/apply':
-                        result = self.wallpaper.apply(targets[0], body.get('preview_id'), self.wallpaper_guard)
+                        identifier = body.get('preview_id')
+                        if hasattr(self, 'store') and isinstance(identifier, str) and len(identifier) == 32 and all(ch in '0123456789abcdef' for ch in identifier):
+                            metadata_path = self.store.root/identifier/'metadata.json'
+                            if metadata_path.exists():
+                                record = json.loads(metadata_path.read_text())
+                                if record.get('panorama'):
+                                    from panorama import plan_layout
+                                    if record['panorama']['layout'] != plan_layout(self.displays):
+                                        raise ValueError('Connected panorama layout changed; generate again')
+                        result = self.wallpaper.apply(targets[0], identifier, self.wallpaper_guard)
                     else:
                         result = self.wallpaper.restore(targets[0], self.wallpaper_guard)
                     if result.get('verified') is True:
@@ -852,7 +925,8 @@ class Controller:
                         active = self.scheduler.active
                         if not active: return {'state':'deferred', 'reason':'No coordinator intent'}
                         refresh_id = active['generation_id']
-                        targets = [t for t in targets if t['id'] in active['targets']]
+                        if not self.settings.get('connected_panorama'):
+                            targets = [t for t in targets if t['id'] in active['targets']]
                     if not targets: raise ValueError('No live targets; run from owning graphical session')
                     if not self.settings['location']: raise ValueError('Confirm a location first')
                     if not self.render_lock.acquire(blocking=False):
