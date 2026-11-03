@@ -172,6 +172,8 @@ PlasmoidItem {
     property string sceneMonitor: ""
     readonly property var sceneKeys: ["rural","townpark","woodland","urban","river","random"]
     readonly property var sceneLabels: ["Rural / farmland", "Town park", "Woodland edge", "Small-town street", "Riverbank", "Random — new scene each generation"]
+    property bool connectedPanorama: false
+    property bool panoramaSupported: false
     property bool sceneSupported: false
     property bool modelSupported: false
     property string sceneKind: "rural"
@@ -194,6 +196,8 @@ PlasmoidItem {
         calendarDetails = cal ? JSON.stringify(cal, null, 2) : "Owner controller update required"
         imageCalendarSummary = status.image_preview && status.image_preview.scene ? "Image receipt: " + (status.image_preview.scene.selected_theme || "No decoration") + " • " + (status.image_preview.scene.calendar_local_date || "legacy date unknown") : "No image calendar receipt"
         rotationSupported = !!status.capabilities && status.capabilities.scene_rotation === true
+        connectedPanorama = status.connected_panorama === true
+        panoramaSupported = !!status.capabilities && status.capabilities.connected_panorama === true
         sceneOverrides = status.scene_overrides || ({})
         sceneSupported = !!status.capabilities && status.capabilities.scene_controls === true
         modelSupported = !!status.capabilities && status.capabilities.model_selection === true
@@ -592,6 +596,18 @@ PlasmoidItem {
                         enabled: root.online && root.sceneSupported && !root.busy
                         onActivated: root.saveSettings({scene_kind:root.sceneKeys[currentIndex]})
                     }
+                    CheckBox {
+                        objectName: "connectedPanoramaToggle"
+                        text: "Connected panorama — all monitors"
+                        checked: root.connectedPanorama
+                        enabled: root.online && root.panoramaSupported && !root.busy
+                        onClicked: root.saveSettings({connected_panorama:checked})
+                    }
+                    Label {
+                        visible: root.connectedPanorama
+                        text: "One global scene across the logical desktop, including vertical offsets. Monitor scene overrides are kept but ignored. Generation covers all monitors; manual Apply/Restore still acts on one selected monitor. Auto applies validated crops in sequence, with safety checks before every write."
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
                     Label { text: "Per-monitor scene" }
                     ComboBox {
                         objectName: "sceneMonitorSelector"; Layout.fillWidth: true
@@ -604,7 +620,7 @@ PlasmoidItem {
                         objectName: "monitorSceneSelector"; Layout.fillWidth: true
                         model: ["Inherit global scene"].concat(root.sceneLabels)
                         currentIndex: root.sceneOverrides[root.sceneMonitor] ? root.sceneKeys.indexOf(root.sceneOverrides[root.sceneMonitor])+1 : 0
-                        enabled: root.online && root.rotationSupported && !root.busy && root.sceneMonitor.length > 0
+                        enabled: root.online && root.rotationSupported && !root.connectedPanorama && !root.busy && root.sceneMonitor.length > 0
                         onActivated: {
                             const overrides = Object.assign({}, root.sceneOverrides)
                             if (currentIndex === 0) delete overrides[root.sceneMonitor]

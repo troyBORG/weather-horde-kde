@@ -10,6 +10,7 @@ Choose a scene, generate a preview, and apply it to a monitor. Weather Horde use
 
 - Pick rural, small-town street, park, woodland or river scenes—or rotate them randomly.
 - Choose different scenes for different monitors, with portrait-aware framing.
+- Optionally connect all monitors with [one shared panorama](docs/connected-panorama.md), respecting the desktop's vertical offsets and scaling.
 - Preview an image before changing your wallpaper; apply or restore one selected monitor at a time.
 - Enable automatic prompt previews, image previews, or generation **and** wallpaper changes. You choose the mode, monitors and interval.
 - Optionally catch up on missed refreshes after unlocking or finishing a game.
