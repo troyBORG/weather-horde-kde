@@ -700,7 +700,7 @@ PlasmoidItem {
                         enabled: root.online && root.modelSupported && !root.busy && root.localModels.length>0
                         onActivated: root.saveSettings({checkpoint:root.localModels[currentIndex].id})
                     }
-                    Label { text: "Selected: " + root.selectedCheckpoint + "\n" + root.modelNotice + "\nTraining resolution is not output resolution. Bounded exact-aspect generation → 2× upscaler → native-size Lanczos; does not guarantee fine detail."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    Label { text: "Selected: " + root.selectedCheckpoint + "\n" + root.modelNotice + "\nTraining resolution is not output resolution. Bounded exact-aspect generation → 4× upscaler → native-size Lanczos. Upscaling improves apparent detail; it does not guarantee original fine detail."; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 }
             }
             }

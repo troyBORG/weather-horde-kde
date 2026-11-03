@@ -52,6 +52,8 @@ Once the controller and widget are installed and connected:
 4. **Select that monitor and apply the preview.** Manual Apply requires one monitor, not “all.” Restore is a separate action when a saved restore target is available.
 5. **Enable Auto only if you want it.** Choose whether it previews prompts, generates images, or also changes wallpapers. Review the target monitors and interval before enabling it.
 
+Native-size outputs use the reviewed [RealESRGAN 4× restoration workflow](docs/upscaling.md).
+
 AI images may not match every detail of the weather or prompt. Inspect a preview before relying on a scene's accuracy.
 
 <details>
