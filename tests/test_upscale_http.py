@@ -28,7 +28,7 @@ class UpscaleHttpTests(unittest.TestCase):
                     if name=='CheckpointLoaderSimple':
                         self.reply({name:{'input':{'required':{'ckpt_name':[['approved.safetensors']]}},'output':['MODEL','CLIP','VAE']}})
                         return
-                    inputs={'UpscaleModelLoader':{'model_name':['COMBO',{'options':[] if missing[0] else ['RealESRGAN_x2plus.pth']}]},
+                    inputs={'UpscaleModelLoader':{'model_name':['COMBO',{'options':['RealESRGAN_x2plus.pth'] if missing[0] else ['RealESRGAN_x4plus.pth']}]},
                       'ImageUpscaleWithModel':{'image':['IMAGE'],'upscale_model':['UPSCALE_MODEL']},
                       'ImageScale':{'image':['IMAGE'],'upscale_method':[['lanczos']],'crop':[['disabled']],'width':['INT',{'min':0,'max':16384}],'height':['INT',{'min':0,'max':16384}]}}
                     self.reply({name:{'input':{'required':inputs[name]}}})
@@ -60,7 +60,7 @@ class UpscaleHttpTests(unittest.TestCase):
                     self.assertEqual(workflow['5']['inputs']['cfg'],PROFILES[kind]['cfg'])
             missing[0]=True; before=len(calls)
             from comfy_preview import build_workflow, SubmissionDeferred
-            with self.assertRaises(SubmissionDeferred):
+            with self.assertRaisesRegex(SubmissionDeferred, 'RealESRGAN_x4plus'):
                 t.queue(build_workflow('approved.safetensors','fixture','fixture',3440,1440,1))
             self.assertEqual(len(calls),before)
             self.assertFalse(t.uncertain)
