@@ -42,6 +42,8 @@ Run installation tools as your normal KDE user, **not with sudo**. Keep the back
 
 ## First use
 
+The widget has four sections: **Wallpaper** for layout, monitor and preview actions; **Schedule** for Auto; **Scene** for location, scenes and model; **Advanced** for collapsed pairing, manual weather, seed, testing override and diagnostics. Status stays visible above the sections. See [navigation and build identity](docs/widget-sections.md).
+
 Once the controller and widget are installed and connected:
 
 1. **Confirm your location.** The suggested location is not automatic detection of where you live.
@@ -53,13 +55,13 @@ Once the controller and widget are installed and connected:
 AI images may not match every detail of the weather or prompt. Inspect a preview before relying on a scene's accuracy.
 
 <details>
-<summary><strong>Refresh timing and known UI wording issue</strong></summary>
+<summary><strong>Refresh timing</strong></summary>
 
 Refresh intervals include 5, 10, 15 and 30 minutes, as well as longer choices. Existing saved intervals are not changed by an update.
 
 Catch-up refresh is opt-in. Once the session is known to be unlocked and fresh safety observations are valid, there is no extra 60-second settling requirement. Other safety checks, retry delays and errors can still defer generation.
 
-Some widget explanation text still mentions “60 safe seconds”; that wording is outdated. See the [current refresh policy](docs/requested-refresh-0.1.11.md) for details.
+The Schedule explanation reflects the [current refresh policy](docs/requested-refresh-0.1.11.md). Older loaded widgets may still mention “60 safe seconds”; check Advanced → Build identity after an owner-approved widget reload.
 
 </details>
 
