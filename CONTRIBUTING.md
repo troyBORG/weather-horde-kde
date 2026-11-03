@@ -6,6 +6,8 @@ Use focused branches: `feat/<topic>`, `fix/<issue>`, `test/<coverage>`, `docs/<t
 
 Use ordinary merges when retaining individual commits and their dates matters. Squashing creates a new single commit; rebase/cherry-pick changes object identity and usually committer time. Never reconstruct fictional historic branches or backdate a baseline. Do not force-push published history without separate approval.
 
+See the [script guide](scripts/README.md) for maintained build/install entrypoints and legacy helpers. Coding assistants must also read [AGENTS.md](AGENTS.md).
+
 ## Isolated validation
 
 Read [testing](docs/testing.md) before running anything. Use a disposable tree as a non-graphical-owner account, not the live controller checkout. Build package/native harness first. Never let fixtures call a real graphical owner's `systemctl --user enable`, render API or wallpaper bus; persistent-installer tests use explicit command adapters and temporary target links. A changed XDG_CONFIG_HOME alone does not isolate a real user manager.

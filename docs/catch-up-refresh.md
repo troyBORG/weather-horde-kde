@@ -1,4 +1,10 @@
-# Catch-up refresh — feature branch, runtime unverified
+# Catch-up refresh — historical design notes
+
+> **Historical reference, not the current installation guide.** The 60-second
+> grace policy below was superseded by the [current refresh policy](requested-refresh-0.1.11.md).
+> Deployment/acceptance statements describe this feature's development snapshot,
+> not the current branch or your installed controller. For installation, use
+> [deployment](deployment.md) and the [owner delivery guide](owner-installer-hardening.md).
 
 The original `8dd1c280` rollout is withdrawn: independent review found repeated
 GPU retries on pending wallpaper transactions and overwritten permanent status.
