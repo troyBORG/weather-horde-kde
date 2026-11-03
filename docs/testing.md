@@ -43,7 +43,7 @@ systemd 262.1-1
 dbus 1.16.2-2.1
 ```
 
-The suite includes the compiled Qt token reader and real offscreen Plasma/QML harness, ephemeral HTTP servers, synthetic PNG fixtures, mocked service command traces and real systemd syntax checks. Installer enablement writes use fixture adapters; no real owner manager is enabled. QML runs on private D-Bus configured without service activation directories. The standalone `tests/kconfig-readback.cpp` is not a separately collected test and was not run as an additional contract target.
+The suite includes the compiled Qt token reader and real offscreen Plasma/QML harness, ephemeral HTTP servers, synthetic PNG fixtures, mocked service command traces and real systemd syntax checks. Installer enablement writes use fixture adapters; no real owner manager is enabled. QML runs on private D-Bus configured without service activation directories.
 
 ## Reproduction
 

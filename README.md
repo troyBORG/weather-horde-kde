@@ -1,66 +1,82 @@
 # Weather Horde KDE
 
-A KDE Plasma 6 widget and authenticated loopback controller for weather-aware wallpaper previews using local ComfyUI. The source snapshot reports version **0.1.11**; a version or Git tag is not proof of a loaded deployment.
+**Weather-aware AI wallpapers for KDE Plasma 6, generated on your own GPU with ComfyUI.**
 
-**Experimental source release.** Owner and Comfy installation paths are explicit configuration; geographic defaults and some legacy recovery targets remain site-specific. Read [deployment](docs/deployment.md), [security](SECURITY.md), and [licensing status](docs/licensing.md) before installation or redistribution. No project-wide license grant has been invented.
+Choose a scene, generate a preview, and apply it to a monitor. Weather Horde uses local weather, time of day and Moon position to guide the image prompt. Optional automation can refresh previews or wallpapers for you.
 
-## Owner installer update
+> **Experimental.** Setup is still hands-on, and generation currently relies on NVIDIA GPU telemetry. ComfyUI and model weights are not included. Weather and location lookups need internet access; image generation stays local.
 
-See [owner installer hardening](docs/owner-installer-hardening.md) for hash-pinned delivery, read-only preflight, exact extraction resume and stopped-only preserving deployment. This does not restart or modify a running installation.
+## What you can do
 
-## What it does
+- Pick rural, small-town street, park, woodland or river scenes—or rotate them randomly.
+- Choose different scenes for different monitors, with portrait-aware framing.
+- Preview an image before changing your wallpaper; apply or restore one selected monitor at a time.
+- Enable automatic prompt previews, image previews, or generation **and** wallpaper changes. You choose the mode, monitors and interval.
+- Optionally catch up on missed refreshes after unlocking or finishing a game.
+- Add optional [seasonal styling and holiday decorations](docs/seasons-and-holidays.md). Both start off by default.
 
-- Weather-inspired rural, street, park, woodland and river scenes; fixed, random and per-monitor scene choices.
-- Day/night and lunar evidence, expiring manual weather observations, and portrait-aware framing.
-- Reviewed local SD1.5/SDXL checkpoint discovery and bounded native-geometry workflows. Model files are not included.
-- Manual **Generate** creates a validated preview. **Apply** and **Restore** are separate selected-monitor transactions with readback.
-- Explicit Auto choices distinguish prompt preview, generation, and generation plus wallpaper application. Installing capabilities is not new automation consent.
-- Opt-in [catch-up refresh](docs/requested-refresh-0.1.11.md) coalesces pending work after unlock/gaming and pauses while locked or session state is unknown. Fresh, valid safe activity/resource observations and a known unlocked session allow eligibility **without an additional 60-second settling delay**; this does not bypass submission, VRAM, ownership, rendering or automatic-apply freshness guards.
-- Refresh intervals include **5, 10 and 15 minutes**, alongside the existing longer choices. An existing saved **30-minute** interval stays 30 minutes until the user explicitly changes it; adding choices does not change Auto, mode or target consent.
-- [Seasonal styling and holiday decorations](docs/seasons-and-holidays.md) are opt-in and default OFF for new and migrated installations. Calendar context is resolved offline for the scene timezone/jurisdiction, independently of weather evidence.
-- Game/VR, unknown clients, GPU load/VRAM, queue ownership and image-validation guards defer unsafe work. Testing override is explicit and temporary, not a recommended deployment workaround.
+Generation pauses when game/VR activity, GPU load, low VRAM or uncertain monitoring makes it unsafe. A paused job is not necessarily an error; check the widget's explanation before changing settings.
 
-**Known cosmetic documentation/UI issue:** the QML catch-up explanation still mentions 60 safe seconds, and the older [catch-up design notes](docs/catch-up-refresh.md) describe that superseded grace policy. Neither describes the current backend behavior above; the [requested refresh policy](docs/requested-refresh-0.1.11.md) is the current reference. This README correction does not change QML or runtime code. Immediate eligibility is not guaranteed immediate generation: other guards, retry backoff and latched errors still apply.
+## Before installing
 
-**Merged on GitHub is not deployed on the desktop.** A source commit, package or release does not update the running controller or loaded widget. Owner deployment, authenticated loaded-revision/capability checks and actual render/apply acceptance remain separate; no live installation, settings changes, service restart or Plasma reload is performed by publication. The stopped-only preserving deployment path retains existing settings/Auto consent; enabling catch-up or calendar styling is a separate explicit choice.
+You need:
 
-Prompts are not pixel constraints. Synthetic fixture images and passing tests do not prove generated visual quality or live wallpaper application.
+- **Linux with KDE Plasma 6** and a systemd user session.
+- **Python 3 with Pillow**, plus KDE's display and wallpaper command-line tools.
+- **A local ComfyUI installation** with a compatible, reviewed SD1.5 or SDXL checkpoint and the upscaler required by your workflow.
+- **An NVIDIA GPU with working telemetry and enough free VRAM.**
 
-## Requirements and build
+Building from source also needs Qt 6 development tools, CMake, a C++17 compiler and KPackage/libplasma development files. See [build and test instructions](CONTRIBUTING.md) for the full toolchain.
 
-GitHub Actions runs native Plasma 6/Qt6 and fixture checks on PRs and branch
-pushes. Successful main pushes publish unique prereleases; matching new version
-tags publish stable releases, using the exact tested artifacts. Neither deploys
-anything. See [CI and release policy](docs/ci-releases.md) for isolation, pinned
-toolchains, artifact privacy, permissions and the existing-tag caveat.
+## Install or update
 
-Full test discovery also needs PyYAML, the Plasma desktop shell package and
-systemd manual pages/man-db for real unit verification. The CI container supplies
-these dependencies; missing dependencies must not be counted as a passing suite.
+Start with the [releases](https://github.com/troyBORG/weather-horde-kde/releases) or a reviewed source checkout. Release assets target **Linux x86_64 with the pinned Arch Qt6/Plasma6 toolchain**; rebuild from source if your Qt ABI differs. Downloading a release does not update your installation.
 
-Linux, Python 3 with Pillow, Plasma 6, Qt 6 development tools (Core/Qml/Quick), CMake, a C++17 compiler, KPackage including `kpackagetool6`, libplasma development files, D-Bus, systemd user tools and Node.js for the test harness. Runtime display discovery and wallpaper operations also require the applicable KDE command-line/session tools. Generation requires a separately installed local ComfyUI, compatible checkpoints/upscaler and suitable NVIDIA telemetry/GPU capacity. Dependency versions used for verification are recorded in [testing](docs/testing.md).
+There are two setup paths:
 
-In a disposable source copy, not the running controller tree:
+1. **First installation:** follow the [deployment guide](docs/deployment.md) to configure your KDE account and ComfyUI path, build/verify the widget, and install the persistent controller. This is not a one-click installer.
+2. **Updating an existing persistent installation:** follow the [owner delivery guide](docs/owner-installer-hardening.md). The generated `OWNER-DEPLOY.sh` checks the delivery first; deployment requires a safely idle, stopped controller and preserves your settings. Starting the controller is a separate step.
 
-```sh
-python3 scripts/package.py
-python3 -m unittest discover -s tests -v
-```
+Run installation tools as your normal KDE user, **not with sudo**. Keep the backup directory printed by the installer. An update preserves Auto settings, so an installation that had Auto on can resume scheduled work after you start it.
 
-The package builder compiles the narrow same-user token-reader plugin, creates `artifacts/org.troyborg.weatherhorde.plasmoid`, installs it into a fresh **project-local validation root**, and verifies byte-for-byte readback. It does not install into live Plasma. Generated binaries are ABI-dependent: rebuild for your Qt toolchain. See [contributing](CONTRIBUTING.md) for isolated test setup and limitations.
+## First use
 
-## Current installation approach
+Once the controller and widget are installed and connected:
 
-Use the **persistent graphical-session controller installer**, not legacy transient rollout helpers. See [the deployment guide](docs/deployment.md) for stopped-controller prerequisites, settings preservation, explicit restoration and rollback. Installation is an owner action in the KDE terminal; this publication preparation performs none.
+1. **Confirm your location.** The suggested location is not automatic detection of where you live.
+2. **Choose a scene, model and monitor.** Start with one monitor to check the result.
+3. **Generate a preview.** This renders an image without applying it. If generation is deferred, read the status reason.
+4. **Select that monitor and apply the preview.** Manual Apply requires one monitor, not “all.” Restore is a separate action when a saved restore target is available.
+5. **Enable Auto only if you want it.** Choose whether it previews prompts, generates images, or also changes wallpapers. Review the target monitors and interval before enabling it.
 
-Build and verify the widget first. The existing owner-only widget helper supports `--verify-only`; actual installation and any shell reload are separate, disruptive actions. Source changes do not reload either the Python controller or the QML widget. Compare authenticated loaded `source_revision` and capabilities after a separately approved owner deployment.
+AI images may not match every detail of the weather or prompt. Inspect a preview before relying on a scene's accuracy.
 
-## Privacy and scope
+<details>
+<summary><strong>Refresh timing and known UI wording issue</strong></summary>
 
-The API binds to loopback and requires the owner-private bearer token. Do not expose it through a reverse proxy, borrow another user's bus/token, attach private state to an issue, or run owner helpers as root. Weather/location lookup uses external providers (Open-Meteo and Zippopotam.us); rendering is local. This is not an entirely offline application.
+Refresh intervals include 5, 10, 15 and 30 minutes, as well as longer choices. Existing saved intervals are not changed by an update.
 
-Recovery receipts, owner settings/tokens, generated wallpapers, desktop screenshots, logs, release archives and original Git/index material are excluded from this source candidate. Installation paths no longer assume a particular home directory, mount or account. Configure the intended owner and reviewed Comfy installation before using owner helpers; see [path configuration](docs/deployment.md#portable-path-and-owner-configuration). Product IDs and security-sensitive system paths are not installation placeholders.
+Catch-up refresh is opt-in. Once the session is known to be unlocked and fresh safety observations are valid, there is no extra 60-second settling requirement. Other safety checks, retry delays and errors can still defer generation.
 
-## Development and provenance
+Some widget explanation text still mentions “60 safe seconds”; that wording is outdated. See the [current refresh policy](docs/requested-refresh-0.1.11.md) for details.
 
-Development and publication preparation were AI-assisted, with human authorization and review gates. This is not a claim that a human personally authored every line. See [truthful history](docs/history.md). Consult [Actions runs](https://github.com/troyBORG/weather-horde-kde/actions) for actual per-commit CI results rather than inferring a pass from workflow presence. Astronomy Engine is preserved with its original [MIT license](ASTRONOMY-LICENSE.txt) and [provenance](ASTRONOMY-PROVENANCE.json).
+</details>
+
+## Troubleshooting and privacy
+
+- **Not paired / disconnected:** check that the controller is running in your KDE session and that the widget can load its local pairing helper. See [deployment](docs/deployment.md).
+- **Preview only:** image rendering has not been enabled/configured in the controller.
+- **Paused / monitoring unknown:** read the displayed reason. Do not use the testing override as a routine workaround.
+- **Update refused:** follow the [installer diagnostics and recovery guide](docs/owner-installer-hardening.md). Do not recursively loosen permissions to bypass its checks.
+
+The controller listens only on loopback and requires a private token. Do not expose it through a reverse proxy or post tokens, settings, screenshots or private logs in issues. Weather/location queries go to Open-Meteo and Zippopotam.us. See [security](SECURITY.md) for the trust boundaries.
+
+## Development
+
+For builds, tests and contribution rules, see [CONTRIBUTING.md](CONTRIBUTING.md). Automated coding assistants should also read [AGENTS.md](AGENTS.md).
+
+- [CI checks and release policy](docs/ci-releases.md)
+- [Test setup and historical validation](docs/testing.md)
+- [Project history](docs/history.md)
+
+Development was AI-assisted. See [licensing status](docs/licensing.md) before redistribution: there is currently no project-wide license grant. Vendored Astronomy Engine retains its [MIT license](ASTRONOMY-LICENSE.txt) and [provenance](ASTRONOMY-PROVENANCE.json).
