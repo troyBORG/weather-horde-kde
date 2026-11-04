@@ -12,6 +12,7 @@ These are development and owner-maintenance tools, not a list of commands to run
 ## Current owner installation and diagnostics
 
 - `install-controller-service.py` — install a persistent graphical-session controller, with stopped-controller checks, settings preservation and rollback.
+- `guided-update-owner.py` — interactive Auto-OFF owner update: backup, bounded idle/port waits, preserving install, authenticated restart verification. Generated `deploy.sh` is the short entrypoint. See [limitations and recovery](../docs/guided-update.md); no automatic Plasma reload.
 - `deploy-preserving-owner.py` — update an existing stopped persistent installation without starting it or resetting settings.
 - `install-auto-pairing.py` — install/verify the widget's native pairing package; check its options before using it. Installation and shell reload are owner actions.
 - `diagnose-pairing-owner.py` — owner-session pairing diagnostics.
