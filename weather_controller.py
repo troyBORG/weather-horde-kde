@@ -58,6 +58,7 @@ class Controller:
         self.preview = None
         self.checkpoint = checkpoint
         self.models = []
+        self.model_exclusions = []
         self.enforce_models = False  # run_controller enables; injected test transports stay offline
         self.model_notice = 'Refresh local models; no GPU or downloads'
         self.previous_sample = None
@@ -159,10 +160,10 @@ class Controller:
     def enable_reviewed_models(self):
         import subprocess
         self.enforce_models = True
+        saved = self.settings.get('checkpoint')
+        if saved and self.checkpoint: self.checkpoint = saved
         try:
             self.refresh_models()
-            saved = self.settings.get('checkpoint')
-            if saved in [m['id'] for m in self.models]: self.checkpoint = saved
         except (OSError,ValueError,RuntimeError,subprocess.SubprocessError):
             self.model_notice = 'Local model discovery unavailable; rendering blocked'
 
@@ -178,8 +179,12 @@ class Controller:
 
     def refresh_models(self):
         from model_catalog import discover_models
+        self.models = []
+        self.model_exclusions = []
+        self.model_notice = 'Discovery unavailable; selection blocked until refreshed'
         self.models = discover_models()
-        self.model_notice = 'Comfy folder_paths + reviewed tensor headers; live node contract rechecked before submission'
+        self.model_exclusions = getattr(self.models, 'excluded', [])
+        self.model_notice = f'{len(self.models)} structurally compatible; {len(self.model_exclusions)} excluded. Live loader checked on selection/submission. Headers cannot verify training family or image quality.'
         return self.models
 
     def selected_profile(self):
@@ -254,7 +259,7 @@ class Controller:
                     'source_revision': SOURCE_REVISION, 'prompt_version':PROMPT_VERSION,
                     'catch_up_refresh': self.settings.get('catch_up_refresh', False),
                     'refresh': self.scheduler.status(time.monotonic()),
-                    'models':self.models, 'model_notice':self.model_notice, 'checkpoint':self.checkpoint,
+                    'models':self.models, 'model_exclusions':self.model_exclusions, 'model_notice':self.model_notice, 'checkpoint':self.checkpoint,
                     'comparison_seed':self.settings.get('comparison_seed'),
                     'framing':self.settings.get('framing','auto'), 'composition_version':COMPOSITION_VERSION,
                     'scene_overrides':dict(self.settings.get('scene_overrides',{})),
@@ -742,7 +747,7 @@ class Controller:
                     raise ValueError('Explicit refresh reconciliation confirmation required')
                 self.reconcile_refresh()
                 return self.status()
-            if method == 'POST' and path == '/v1/models/refresh':
+            if method in ('GET', 'POST') and path == '/v1/models/refresh':
                 if self.render_lock.locked(): raise ValueError('Wait for current preview')
                 self.refresh_models()
                 return self.status()
@@ -802,7 +807,10 @@ class Controller:
                 if self.render_lock.locked() and any(k in body for k in ('checkpoint','comparison_seed')): raise ValueError('Wait for current preview')
                 if 'checkpoint' in body:
                     if not self.checkpoint: raise ValueError('Renderer not enabled by owner')
-                    if body['checkpoint'] not in [m['id'] for m in self.refresh_models()]: raise ValueError('Select a discovered reviewed checkpoint')
+                    if body['checkpoint'] not in [m['id'] for m in self.refresh_models()]: raise ValueError('Select a discovered compatible checkpoint')
+                    if self.enforce_models:
+                        if self.transport is None: raise ValueError('Live Comfy loader unavailable; selection unchanged')
+                        self.transport.validate_checkpoint(body['checkpoint'])
                 if 'scene_kind' in body and body['scene_kind'] not in SCENE_CHOICES: raise ValueError('Invalid scene')
                 if 'scene_overrides' in body:
                     overrides = body['scene_overrides']

@@ -120,7 +120,8 @@ class ComfyTransport:
             node=self.request('/object_info/CheckpointLoaderSimple')['CheckpointLoaderSimple']
             option=node['input']['required']['ckpt_name']
             names=option[0] if isinstance(option[0],list) else option[1]['options']
-            if identifier not in names or node['output'][:3] != ['MODEL','CLIP','VAE']:
+            if (not isinstance(names,list) or any(not isinstance(name,str) for name in names) or
+                identifier not in names or node['output'][:3] != ['MODEL','CLIP','VAE']):
                 raise ValueError('Checkpoint missing or loader contract changed')
         except (OSError,ValueError,KeyError,TypeError,IndexError) as exc:
             raise SubmissionDeferred('Checkpoint preflight failed; no submission: '+str(exc)) from exc

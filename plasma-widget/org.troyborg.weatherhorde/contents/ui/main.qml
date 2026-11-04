@@ -173,7 +173,7 @@ PlasmoidItem {
     readonly property var sceneKeys: ["rural","townpark","woodland","urban","river","random"]
     readonly property var sceneLabels: ["Rural / farmland", "Town park", "Woodland edge", "Small-town street", "Riverbank", "Random — new scene each generation"]
     property bool connectedPanorama: false
-    readonly property string widgetBuild: "0.1.11 / sections-1 / panorama"
+    readonly property string widgetBuild: "0.1.11 / sections-1 / panorama / model-discovery-1"
     property string runtimeBuild: "Not verified"
     property bool panoramaSupported: false
     property bool sceneSupported: false
@@ -187,6 +187,7 @@ PlasmoidItem {
     property var localModels: []
     property string selectedCheckpoint: ""
     property string modelNotice: ""
+    property var modelExclusions: []
     function setObservation(fields) {
         request("PUT", "/v1/observation", fields, function(status) { root.acceptStatus(status) })
     }
@@ -215,6 +216,7 @@ PlasmoidItem {
         localModels = status.models || []
         selectedCheckpoint = status.checkpoint || ""
         modelNotice = status.model_notice || "Owner rollout required"
+        modelExclusions = status.model_exclusions || []
         if (status.preview && status.preview.weather_evidence) evidenceText = JSON.stringify(status.preview.weather_evidence, null, 2)
         reconnectDelayMs = reconnectMinimumMs
         reconnectTimer.stop()
@@ -692,13 +694,23 @@ PlasmoidItem {
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     Label { text: root.weatherSource; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                    Button { text: "Discover local Comfy models"; enabled: root.online && root.modelSupported && !root.busy; onClicked: root.request("POST","/v1/models/refresh",{},function(status){root.acceptStatus(status)}) }
+                    Button { objectName: "discoverModelsButton"; text: "Discover local Comfy models"; enabled: root.online && root.modelSupported && !root.busy; onClicked: root.request("GET","/v1/models/refresh",null,function(status){root.acceptStatus(status)}) }
                     ComboBox {
                         objectName: "modelSelector"; Layout.fillWidth: true
                         model: root.localModels.map(function(m){return m.id + " · " + m.architecture + " · " + m.native_resolution + " native · ≥" + m.min_free_mib + " MiB free"})
                         currentIndex: root.localModels.findIndex(function(m){return m.id===root.selectedCheckpoint})
                         enabled: root.online && root.modelSupported && !root.busy && root.localModels.length>0
                         onActivated: root.saveSettings({checkpoint:root.localModels[currentIndex].id})
+                    }
+                    ToolButton {
+                        id: modelExclusionsToggle; objectName: "modelExclusionsToggle"
+                        text: (checked ? "▾ " : "▸ ") + "Excluded models (" + root.modelExclusions.length + ")"
+                        checkable: true; checked: false; visible: root.modelExclusions.length > 0
+                    }
+                    Label {
+                        objectName: "modelExclusionsText"; visible: modelExclusionsToggle.checked
+                        text: root.modelExclusions.map(function(m){return m.id + " — " + m.reason}).join("\n")
+                        textFormat: Text.PlainText; wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     Label { text: "Selected: " + root.selectedCheckpoint + "\n" + root.modelNotice + "\nTraining resolution is not output resolution. Bounded exact-aspect generation → 4× upscaler → native-size Lanczos. Upscaling improves apparent detail; it does not guarantee original fine detail."; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 }

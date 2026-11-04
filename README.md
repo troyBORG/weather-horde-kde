@@ -47,7 +47,7 @@ The widget has four sections: **Wallpaper** for layout, monitor and preview acti
 Once the controller and widget are installed and connected:
 
 1. **Confirm your location.** The suggested location is not automatic detection of where you live.
-2. **Choose a scene, model and monitor.** Start with one monitor to check the result.
+2. **Choose a scene, model and monitor.** In Scene, **Discover local Comfy models** refreshes compatible local checkpoints without changing your selection or starting generation. Expand **Excluded models** for reasons. See [model discovery and compatibility limits](docs/model-discovery.md). Start with one monitor to check the result.
 3. **Generate a preview.** This renders an image without applying it. If generation is deferred, read the status reason.
 4. **Select that monitor and apply the preview.** Manual Apply requires one monitor, not “all.” Restore is a separate action when a saved restore target is available.
 5. **Enable Auto only if you want it.** Choose whether it previews prompts, generates images, or also changes wallpapers. Review the target monitors and interval before enabling it.
