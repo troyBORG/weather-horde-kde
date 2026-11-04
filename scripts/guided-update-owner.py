@@ -71,6 +71,7 @@ class OwnerUpdate:
         self.identity()
         saved = self.deployment.capture()
         self.raw = saved['settings']
+        self.entry_unit, self.entry_enabled = saved['unit'], saved['enabled']
         expected = json.loads(self.raw)
         self.before = self.api()
         self.preferences(expected, self.before)
@@ -149,6 +150,10 @@ class OwnerUpdate:
         from receipt_lock import state_lock
         module = load_preserving()
         with state_lock(self.state, exclusive=True):
+            if (self.deployment.destination.read_bytes() != self.entry_unit
+                or self.deployment.enablement() != self.entry_enabled
+                or json.loads(self.helper.private_read(self.state/'settings.json')) != json.loads(self.raw)):
+                raise RuntimeError('Unit, enablement or preferences changed before install; no installation attempted')
             module.deploy(self.deployment)
 
     def start(self):
@@ -175,7 +180,7 @@ class OwnerUpdate:
             if (status.get('testing_override',{}).get('active') is not False
                 or not status.get('displays') or status.get('comfy_service',{}).get('managed') != self.before.get('comfy_service',{}).get('managed')):
                 raise RuntimeError('Runtime display/override/managed capability mismatch')
-            if self.deployment.enablement() != self.deployment.saved['enabled']:
+            if self.deployment.enablement() != self.entry_enabled:
                 raise RuntimeError('Enablement changed')
             return True
         self.wait(ready, 'Authenticated startup')

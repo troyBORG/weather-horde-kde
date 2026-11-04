@@ -127,6 +127,12 @@ with tempfile.TemporaryDirectory() as tmp:
         self.assertNotIn('ctl:stop',result['events'])
         self.assertEqual(result['settings']['interval_minutes'],60)
 
+    def test_enablement_change_refused_before_install(self):
+        result=self.scenario('enablement-change')
+        self.assertFalse(result['success'])
+        self.assertNotIn('install',result['events'])
+        self.assertNotIn('ctl:start',result['events'])
+
     def test_success_preserves_entry_off_and_orders_verification(self):
         result=self.run_fixture()
         self.assertEqual(result.returncode,0,result.stderr)

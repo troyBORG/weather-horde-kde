@@ -21,6 +21,9 @@ def main():
         raw=(json.dumps(settings,indent=3)+'\n').encode()
         (state/'settings.json').write_bytes(raw);(state/'token').write_text('fixture-token')
         for p in state.iterdir():p.chmod(0o600)
+        if scenario=='pending':
+            (state/'wallpaper-restore.json').write_text(json.dumps({'fixture':{'state':'pending'}}))
+            (state/'wallpaper-restore.json').chmod(0o600)
         events=[];started=False
         class Handler(BaseHTTPRequestHandler):
             def log_message(self,*args): pass
@@ -61,7 +64,7 @@ def main():
             def capture(self):
                 self.saved['settings']=(state/'settings.json').read_bytes()
                 return self.saved
-            def enablement(self):return 'disabled'
+            def enablement(self):return 'enabled' if scenario=='enablement-change' and 'port-check' in events else 'disabled'
             def require_stopped(self):
                 assert not started
             def backup(self,saved):events.append('installer-backup')
@@ -79,7 +82,6 @@ def main():
                 if scenario=='concurrent-preferences' and events.count('identity')==2:
                     data=json.loads((state/'settings.json').read_bytes());data['interval_minutes']=60
                     (state/'settings.json').write_text(json.dumps(data))
-            def pending(self):return scenario=='pending'
             def port_state(self):
                 events.append('port-check')
                 if scenario=='foreign':raise RuntimeError('Foreign listener')
