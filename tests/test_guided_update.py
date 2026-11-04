@@ -45,6 +45,30 @@ class GuidedUpdateTests(unittest.TestCase):
         self.assertEqual(result['backups'],1)
         self.assertLess(result['events'].index('api-off'),result['events'].index('ctl:stop'))
 
+    def test_display_discovery_readiness_retries_without_reinstall(self):
+        result=self.scenario('display-readiness')
+        self.assertTrue(result['success'],result)
+        self.assertGreaterEqual(result['events'].count('startup-status'),3)
+        self.assertEqual(result['events'].count('install'),1)
+        self.assertTrue(result['bytes_preserved'])
+
+    def test_persistent_missing_displays_times_out_without_restart_or_restore(self):
+        result=self.scenario('display-missing')
+        self.assertFalse(result['success'])
+        self.assertIn('error:TimeoutError',result['events'])
+        self.assertEqual(result['events'].count('ctl:start'),1)
+        self.assertFalse(result['bytes_preserved'])
+        self.assertFalse(result['settings']['automation_enabled'])
+
+    def test_override_and_managed_mismatches_fail_without_retry(self):
+        for scenario in ('override-active','override-missing','managed-mismatch'):
+            with self.subTest(scenario=scenario):
+                result=self.scenario(scenario)
+                self.assertFalse(result['success'])
+                self.assertEqual(result['events'].count('startup-status'),1)
+                self.assertIn('error:RuntimeError',result['events'])
+                self.assertFalse(result['bytes_preserved'])
+
     def test_busy_timeout_never_disables_or_stops(self):
         result=self.scenario('timeout')
         self.assertFalse(result['success'])

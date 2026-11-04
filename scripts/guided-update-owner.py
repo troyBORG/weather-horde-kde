@@ -178,11 +178,14 @@ class OwnerUpdate:
                 if status.get(key) != self.before.get(key):
                     raise RuntimeError('Runtime capability mismatch')
             if (status.get('testing_override',{}).get('active') is not False
-                or not status.get('displays') or status.get('comfy_service',{}).get('managed') != self.before.get('comfy_service',{}).get('managed')):
-                raise RuntimeError('Runtime display/override/managed capability mismatch')
+                or status.get('comfy_service',{}).get('managed') != self.before.get('comfy_service',{}).get('managed')):
+                raise RuntimeError('Runtime override/managed capability mismatch')
             if self.deployment.enablement() != self.entry_enabled:
                 raise RuntimeError('Enablement changed')
-            return True
+            # HTTP serving can precede the monitor's first discovery result.
+            # Keep all identity/preferences/safety checks hard failures above;
+            # only display readiness gets the existing bounded startup retry.
+            return bool(status.get('displays'))
         self.wait(ready, 'Authenticated startup')
 
     def restore(self, saved):

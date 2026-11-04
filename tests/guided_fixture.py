@@ -32,6 +32,13 @@ def main():
                 assert self.headers['Authorization']=='Bearer fixture-token'
                 value=json.loads((state/'settings.json').read_bytes())
                 value.update(source_revision='new' if started else 'old',state='rendering' if scenario=='timeout' else 'idle',render_enabled=True,apply_enabled=True,capabilities={'model_selection':True},testing_override={'active':False},comfy_service={'managed':True},displays=[{'id':'fixture'}])
+                if started:
+                    events.append('startup-status')
+                    if scenario=='display-missing' or (scenario=='display-readiness' and events.count('startup-status')<3):
+                        value['displays']=[]
+                    if scenario=='override-active':value['testing_override']['active']=True
+                    if scenario=='override-missing':value['testing_override']={}
+                    if scenario=='managed-mismatch':value['comfy_service']['managed']=False
                 if started and scenario=='verify-failure':value['source_revision']='wrong'
                 self.send_response(200);self.end_headers();self.wfile.write(json.dumps(value).encode())
             def do_PUT(self):
