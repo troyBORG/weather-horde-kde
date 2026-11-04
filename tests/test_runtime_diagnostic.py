@@ -11,7 +11,7 @@ class DiagnosticTests(unittest.TestCase):
         result=m.sanitized_status({'service_version':'0.1.7','state':'deferred','last_error':'Command [private argv] failed',
             'image_preview':{'secret':'private'},'location':{'secret':'private'},
             'wallpaper_action':{'state':'failed','target':'DP-2','reason':'Permission denied /home/example/private/file'},
-            'guard':{'decision':'unknown','free_mib':24000,'reason':'unrecognized_gpu_client'}})
+            'guard':{'decision':'unknown','total_mib':24576,'free_mib':24000,'reason':'unrecognized_gpu_client'}})
         text=str(result)
         self.assertNotIn('private',text);self.assertNotIn('/home/',text)
         self.assertEqual(result['wallpaper_action']['target'],'DP-2')

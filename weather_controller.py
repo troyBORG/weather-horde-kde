@@ -168,14 +168,10 @@ class Controller:
             self.model_notice = 'Local model discovery unavailable; rendering blocked'
 
     def model_gate(self):
-        import math
+        from safety import vram_eligibility
         profile = self.selected_profile()
         if self.enforce_models and profile is None: return 'unreviewed_model'
-        if profile:
-            free = self.guard.get('free_mib')
-            if type(free) not in (int,float) or not math.isfinite(free) or free < profile['min_free_mib']:
-                return 'insufficient_model_vram'
-        return 'safe'
+        return vram_eligibility(self.guard) if profile else 'safe'
 
     def refresh_models(self):
         from model_catalog import discover_models
@@ -254,6 +250,7 @@ class Controller:
                 'scope': 'manual_image_previews_only'}
 
     def status(self):
+        from safety import memory_policy, vram_eligibility
         with self.lock:
             return {**self.settings, 'calendar':self.calendar_now(), 'calendar_settings_notice':self.calendar_settings_notice, 'api_version': 1, 'service_version': SERVICE_VERSION,
                     'source_revision': SOURCE_REVISION, 'prompt_version':PROMPT_VERSION,
@@ -275,6 +272,7 @@ class Controller:
                     'render_request': self.render_request,
                     'wallpaper_action': self.wallpaper_action,
                     'quarantine': self.quarantine,
+                    'memory': dict(memory_policy(self.guard), decision=vram_eligibility(self.guard)),
                     'previews_by_target': dict(self.previews_by_target),
                     'wallpaper_guard': 'safe',
                     'guard': self.guard if time.time()-self.guard['observed_at'] <= 15 else {'decision':'unknown'},
@@ -341,6 +339,7 @@ class Controller:
         original_guard, override_receipt = policy or self.manual_policy()
         self.quarantine = None
         layout = None
+        stage = "preflight"
         def guard():
             decision = original_guard()
             if layout:
@@ -353,7 +352,9 @@ class Controller:
             if model_gate != 'safe': decision = model_gate
             if decision != "safe" and self.quarantine is None:
                 with self.lock:
-                    self.quarantine = {"decision":decision, "reason":self.guard.get("reason", decision) if self.guard.get("decision") == decision else decision, "at":time.time()}
+                    from safety import memory_policy
+                    self.quarantine = {"decision":decision, "reason":self.guard.get("reason", decision) if self.guard.get("decision") == decision else decision, "at":time.time(),
+                                       "stage":stage, "memory":memory_policy(self.guard)}
             return decision
         self.job_guard = guard
         job = None
@@ -398,6 +399,7 @@ class Controller:
                 self.preview = target_scenes[0]['scene'] | {'targets':targets, 'target_scenes':target_scenes}
             with self.lock: self.render_results = []
             for size, ids, scene, workflow in workflows:
+                stage = "submission"
                 decision = guard()
                 if decision != 'safe':
                     with self.lock:
@@ -414,6 +416,7 @@ class Controller:
                 journal.write_text(json.dumps({'prompt_id':job, 'state':'queued'}))
                 blocked = False
                 deadline = time.monotonic()+600
+                stage = "polling"
                 while time.monotonic() < deadline:
                     blocked = blocked or guard() != 'safe'
                     state = self.transport.inspect(job)
@@ -432,11 +435,13 @@ class Controller:
                     if state == 'complete':
                         outstanding = False
                         journal.unlink(missing_ok=True)
+                        stage = "image_validation"
                         raw = self.transport.image(job)
                         blocked = blocked or guard() != 'safe'
                         metadata = {'generated_at':time.time(), 'prompt_id':job, 'testing_override':override_receipt, 'quarantine_evidence':self.quarantine, 'targets':ids, 'positive':scene['positive'],
                                     'negative':scene['negative'], 'scene':scene,
                                     'workflow_sha256':hashlib.sha256(json.dumps(workflow,sort_keys=True).encode()).hexdigest()}
+                        stage = "publication"
                         if layout:
                             crops = crop_master(raw, layout)
                             results = {}
@@ -481,6 +486,7 @@ class Controller:
                         if refresh_id and not auto_apply:
                             for target_id in ids: self.refresh_complete(target_id, refresh_id)
                         if auto_apply:
+                            stage = "automatic_apply"
                             for target in targets:
                                 if target["id"] not in ids: continue
                                 if guard() != "safe": raise ValueError("Automatic apply deferred: activity or automation settings changed")

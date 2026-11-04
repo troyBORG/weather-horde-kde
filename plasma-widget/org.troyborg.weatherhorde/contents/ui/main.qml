@@ -52,6 +52,12 @@ PlasmoidItem {
         if (!automationEnabled) return "Automation off"
         return "Idle — ready"
     }
+    property var memoryEvidence: ({})
+    function memoryText(m) {
+        if (!m || m.decision === "vram_unavailable" || m.total_mib === undefined) return "VRAM telemetry unavailable — rendering blocked"
+        return "VRAM " + Number(m.used_mib).toFixed(1) + " used / " + Number(m.total_mib).toFixed(1) + " MiB total · " + Number(m.free_mib).toFixed(1) + " free (need ≥ " + Number(m.required_free_mib).toFixed(1) + ") · max 80% used"
+    }
+    readonly property string memorySummary: statusStale || !online ? "VRAM telemetry unavailable — refresh required" : memoryText(memoryEvidence)
     readonly property string statusReason: {
         let reason = ""
         if (controllerToken.length < 32) reason = connectionSummary + ". Manual pairing remains available."
@@ -61,7 +67,7 @@ PlasmoidItem {
         else if (effectiveGuard === "game_active") reason = "Game-like process detected by controller; new GPU previews are deferred."
         else if (effectiveGuard === "vr_active") reason = "VR process detected by controller; new GPU previews are deferred."
         else if (effectiveGuard === "gpu_busy") reason = "Sustained GPU load is above the safe threshold."
-        else if (effectiveGuard === "insufficient_vram") reason = "Free VRAM is below the controller safety reserve."
+        else if (effectiveGuard === "insufficient_vram") reason = memorySummary
         else if (effectiveGuard !== "safe") {
             const diagnostics = {
                 graphical_owner_visibility: "Controller cannot verify the graphical owner; run it in your KDE session.",
@@ -70,7 +76,7 @@ PlasmoidItem {
                 utilization_unavailable: "GPU utilization samples are unavailable.",
                 active_client_counters_unavailable: "Active-job per-client engine counters are incomplete.",
                 unexplained_gpu_load: "GPU load cannot be attributed exclusively to this job.",
-                vram_unavailable: "Free VRAM is unavailable; testing override cannot bypass this.",
+                vram_unavailable: "Total/free VRAM telemetry unavailable; testing override cannot bypass this.",
                 collector_read_failed: "A process / GPU telemetry read failed; check controller diagnostics."
             }
             reason = diagnostics[guardDetails.reason] || "Activity / GPU telemetry is incomplete or unknown; rendering is blocked."
@@ -81,9 +87,10 @@ PlasmoidItem {
         else reason = "Guard reports safe. Generate now previews images; Apply changes one selected monitor. Automation: " + automationScopeText + "."
         if (controllerState === "rendering_guard_blocked") reason += " A job is still in flight; its output will be quarantined, not applied."
         if (controllerState === "quarantined") reason = "Previous render quarantined: " + (quarantineEvidence ? quarantineEvidence.decision + " / " + quarantineEvidence.reason + " at " + new Date(quarantineEvidence.at*1000).toLocaleTimeString() : "original reason unavailable in this controller revision") + ". Current guard: " + effectiveGuard + ". Safe now does not release old output; Generate a new preview. No wallpaper was applied by that render."
+        if (controllerState === "quarantined" && quarantineEvidence && quarantineEvidence.memory) reason += " At " + quarantineEvidence.stage + ": " + memoryText(quarantineEvidence.memory)
         return reason
     }
-    readonly property string statusDetails: statusTitle + "\n" + connectionSummary + "\n" + statusReason + "\n" + automationSummary + "\nWallpaper changes: manual Apply / Restore, or explicitly enabled Auto\n" + checkSummary + "\nController: " + controllerState + " · guard: " + guardState + (guardDetails.free_mib !== undefined ? " · free VRAM: " + guardDetails.free_mib + " MiB" : "") + "\nActivity guards remain enforced unless testing override is explicitly confirmed."
+    readonly property string statusDetails: statusTitle + "\n" + connectionSummary + "\n" + statusReason + "\n" + automationSummary + "\nWallpaper changes: manual Apply / Restore, or explicitly enabled Auto\n" + checkSummary + "\nController: " + controllerState + " · guard: " + guardState + "\n" + memorySummary + "\n20% free reserve is policy, not a guarantee against OOM." + "\nActivity guards remain enforced unless testing override is explicitly confirmed."
     Timer { interval: 1000; running: true; repeat: true; onTriggered: root.clockNow = Date.now() }
     // Mutable for isolated Plasma harness; request() enforces literal loopback.
     property string controllerBase: "http://127.0.0.1:8734"
@@ -224,6 +231,7 @@ PlasmoidItem {
         clockNow = lastStatusCheck
         guardDetails = status.guard || {}
         quarantineEvidence = status.quarantine || null
+        memoryEvidence = status.memory || {}
         renderEnabled = status.render_enabled === true
         serviceVersion = status.service_version || "unknown (legacy controller)"
         applyBlocker = status.apply_blocker || "Running controller cannot apply wallpapers; owner rollout required"

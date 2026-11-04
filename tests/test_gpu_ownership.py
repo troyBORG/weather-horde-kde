@@ -5,7 +5,7 @@ from safety import decide
 class OwnershipTests(unittest.TestCase):
     def test_verified_own_load_only_does_not_mask_other_clients_or_game(self):
         good={'processes':['kwin_wayland','python'], 'complete':True,'age':0,'sample_gap':10,
-              'utilization':[90,95],'free_mib':16000,'gpu_clients':['/usr/bin/kwin_wayland','/venv/bin/python'],
+              'utilization':[90,95],'total_mib':24576,'free_mib':16000,'gpu_clients':['/usr/bin/kwin_wayland','/venv/bin/python'],
               'gpu_pids':[10,20], 'owned_pid':20, 'client_sm':{10:1,20:95},
               'previous_client_sm':{10:2,20:90}, 'previous_owned_pid':20, 'owned_active':True, 'previous_owned_active':True}
         self.assertEqual(decide(good),'safe')
@@ -30,7 +30,7 @@ class OwnershipTests(unittest.TestCase):
             elif args[:2]==['ps','-C']: out=str(os.getuid())
             elif '-q' in args: out='<nvidia_smi_log><gpu><processes><process_info><pid>10</pid><process_name>kwin_wayland</process_name></process_info><process_info><pid>20</pid><process_name>python</process_name></process_info></processes></gpu></nvidia_smi_log>'
             elif 'pmon' in args: out=usage[0]
-            else: out='95, 16000'
+            else: out='95, 16000, 24576'
             return subprocess.CompletedProcess(args,0,stdout=out)
         prior={'at':90,'util':90,'client_sm':{10:1,20:90},'owned_pid':20,'owned_active':True}
         with patch('safety.subprocess.run',side_effect=run), patch('safety.time.monotonic',return_value=100):

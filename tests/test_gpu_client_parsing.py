@@ -11,7 +11,7 @@ DISCORD = ('/home/example/.config/discord/app-1.0.166/Discord '
            '--type=gpu-process --ozone-platform=wayland '
            '--render-node-override=/dev/dri/renderD128 --private-token=DO_NOT_REPORT')
 GOOD = dict(processes=['kwin_wayland', 'Discord'], complete=True, age=0,
-            sample_gap=10, utilization=[0, 0], free_mib=20000)
+            sample_gap=10, utilization=[0, 0], total_mib=24576,free_mib=20000)
 
 class GPUClientParsingTests(unittest.TestCase):
     def test_full_argv_discord_is_not_last_argument_basename(self):
@@ -122,7 +122,7 @@ class GPUClientParsingTests(unittest.TestCase):
             if args[:2]==['ps','-eo']: out='kwin_wayland\nDiscord'
             elif args[:2]==['ps','-C']: out=str(os.getuid())
             elif '-q' in args: out=xml
-            else: out='0, 20000'
+            else: out='0, 20000, 24576'
             return subprocess.CompletedProcess(args,0,stdout=out)
         with patch('safety.subprocess.run',side_effect=run), patch('safety.time.monotonic',return_value=100):
             return collect({'at':90, 'util':0})[0]

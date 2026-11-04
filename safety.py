@@ -131,14 +131,38 @@ def gpu_client_identity(pid, reported):
     return {'pid': pid, 'name': diagnostic_name(executable), 'source': 'proc_exe'}
 
 
+def finite_number(value):
+    """Reject booleans, strings and numbers that cannot be finite telemetry."""
+    try:
+        return type(value) in (int, float) and math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def memory_policy(evidence):
+    """Validated numeric MiB only; 80% used is a policy, not an OOM guarantee.
+
+    Return bounded, allowlisted diagnostics, never arbitrary telemetry fields.
+    Divide by five rather than multiply by .2 to admit the exact 20% boundary.
+    """
+    free, total = evidence.get('free_mib'), evidence.get('total_mib')
+    result = {'decision': 'vram_unavailable', 'max_used_percent': 80}
+    if (not finite_number(free) or not finite_number(total)
+            or total <= 0 or not 0 <= free <= total):
+        return result
+    required = total / 5
+    return dict(result, decision='safe' if free >= required else 'insufficient_vram',
+                free_mib=free, total_mib=total, used_mib=total-free,
+                required_free_mib=required)
+
+
 def vram_eligibility(evidence):
     """Hard resource gate independent of incomplete activity telemetry."""
-    free = evidence.get('free_mib')
     observed = evidence.get('observed_at', 0)
-    if (type(free) not in (int, float) or not math.isfinite(free) or free < 0
-            or type(observed) not in (int, float) or not 0 <= time.time()-observed <= 15):
+    if (not finite_number(observed)
+            or not 0 <= time.time()-observed <= 15):
         return 'vram_unavailable'
-    return 'safe' if free >= 8192 + 3072 else 'insufficient_vram'
+    return memory_policy(evidence)['decision']
 
 
 def decide(snapshot):
@@ -191,9 +215,9 @@ def assess(snapshot):
                 residual.append(min(100, sum(v for pid,v in usage.items() if pid != owned)))
             samples = residual
         if min(samples) >= 30: return 'gpu_busy', 'sustained_utilization'
-        free = snapshot['free_mib']
-        if type(free) not in (int, float) or not math.isfinite(free) or free < 0: return 'unknown', 'vram_unavailable'
-        if free < 8192 + 3072: return 'insufficient_vram', 'vram_reserve'
+        memory = memory_policy(snapshot)['decision']
+        if memory == 'vram_unavailable': return 'unknown', memory
+        if memory != 'safe': return memory, 'vram_reserve'
         return 'safe', 'checks_passed'
     except (KeyError, TypeError, ValueError):
         return 'unknown', 'malformed_evidence'
@@ -209,11 +233,11 @@ def collect(previous=None, transport=None):
     try:
         names = subprocess.run(['ps', '-eo', 'comm='], capture_output=True, text=True,
                                check=True, timeout=5).stdout.splitlines()
-        rows = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,memory.free',
+        rows = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,memory.free,memory.total',
                                '--format=csv,noheader,nounits'], capture_output=True,
                               text=True, check=True, timeout=5).stdout.strip().splitlines()
         if len(rows) != 1: raise ValueError('Ambiguous GPU')
-        utilization, free = [int(x.strip()) for x in rows[0].split(',')]
+        utilization, free, total = [int(x.strip()) for x in rows[0].split(',')]
         xml = subprocess.run(['nvidia-smi', '-q', '-x'], capture_output=True, text=True, check=True, timeout=5).stdout
         tree = ET.fromstring(xml)
         groups = tree.findall('./gpu/processes')
@@ -244,7 +268,7 @@ def collect(previous=None, transport=None):
         complete = owners == [str(os.getuid())]
         prior = previous or {'at': now, 'util': utilization}
         snap = {'processes': names, 'gpu_clients': clients, 'complete': complete, 'utilization': [prior['util'], utilization],
-                'free_mib': free, 'sample_gap': now-prior['at'], 'age': 0,
+                'free_mib': free, 'total_mib': total, 'sample_gap': now-prior['at'], 'age': 0,
                 'gpu_pids':pids, 'gpu_client_identities':identities, 'owned_pid':owned, 'owned_active':active,
                 'client_sm':usage, 'previous_client_sm':prior.get('client_sm',{}),
                 'previous_owned_pid':prior.get('owned_pid'), 'previous_owned_active':prior.get('owned_active',False)}
@@ -252,7 +276,7 @@ def collect(previous=None, transport=None):
         known = assess(snap | {'complete': True})
         decision, reason = known if known[0] in ('game_active', 'vr_active') else assess(snap)
         return {'decision': decision, 'reason': reason, 'sample_gap_seconds': round(snap['sample_gap'], 1),
-                'observed_at': time.time(), 'free_mib': free,
+                'observed_at': time.time(), 'free_mib': free, 'total_mib': total,
                 'visibility_complete': complete, 'gpu_client_identities': identities,
                 'owned_gpu_pid':owned, 'owned_gpu_active':active}, {'at': now, 'util': utilization, 'client_sm':usage, 'owned_pid':owned, 'owned_active':active}
     except (OSError, ValueError, TypeError, KeyError, AttributeError, ET.ParseError, subprocess.SubprocessError):

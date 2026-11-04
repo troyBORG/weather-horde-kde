@@ -48,7 +48,7 @@ class UpscaleHttpTests(unittest.TestCase):
                     t=ComfyTransport('http://127.0.0.1:'+str(server.server_port))
                     c=Controller(d,checkpoint='approved.safetensors',transport=t,render_guard=lambda:'safe',poll_seconds=.01)
                     c.settings['location']={'town':'fixture'}; c.displays=[{'id':'FIXTURE','width':w,'height':h}]
-                    c.guard={'decision':'safe','observed_at':time.time(),'free_mib':24000}
+                    c.guard={'decision':'safe','observed_at':time.time(),'total_mib':24576,'free_mib':24000}
                     c.models=[dict(id='approved.safetensors',**PROFILES[kind])]
                     c.refresh_models=lambda:c.models
                     c.enforce_models=True

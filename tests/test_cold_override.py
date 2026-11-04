@@ -20,7 +20,7 @@ class ColdOverrideTests(unittest.TestCase):
             c.comfy_service.startup_seconds=.01
             c.displays=[{'id':'DP-2','width':64,'height':128}]
             c.settings['location']={'town':'fixture'}
-            c.guard={'decision':'unknown','reason':'unrecognized_gpu_client','free_mib':free,'observed_at':time.time()}
+            c.guard={'decision':'unknown','reason':'unrecognized_gpu_client','total_mib':24576,'free_mib':free,'observed_at':time.time()}
             if enabled: c.dispatch('PUT','/v1/testing-override',{'enabled':True,'confirmation':'I accept stutter and OOM risk'})
             def start(*args):
                 started.append(args);t.listener=(123,1000,42)

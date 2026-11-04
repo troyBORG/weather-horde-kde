@@ -17,8 +17,8 @@ COMFY = comfy_root()
 MAX_HEADER = 8*1024*1024
 MAX_INVENTORY = 1024*1024
 PROFILES = {
-    'sd15':dict(architecture='sd15',native_resolution=512,max_pixels=393216,min_free_mib=11264,steps=24,cfg=6.0),
-    'sdxl':dict(architecture='sdxl',native_resolution=1024,max_pixels=1048576,min_free_mib=12288,steps=28,cfg=5.5),
+    'sd15':dict(architecture='sd15',native_resolution=512,max_pixels=393216,steps=24,cfg=6.0),
+    'sdxl':dict(architecture='sdxl',native_resolution=1024,max_pixels=1048576,steps=28,cfg=5.5),
 }
 
 

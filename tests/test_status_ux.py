@@ -59,6 +59,12 @@ Item {
    for (let row of [["vr_active","Paused — VR detected"],["unknown","Monitoring unknown"],["gpu_busy","Paused — GPU busy"],["insufficient_vram","Paused — low VRAM"]]) {
       status(row[0],"idle",false); check(widget.statusTitle===row[1],row[0])
    }
+   widget.acceptStatus({interval_minutes:60,state:"idle",guard:{decision:"insufficient_vram"},memory:{decision:"insufficient_vram",used_mib:20576,free_mib:4000,total_mib:24576,required_free_mib:4915.2}})
+   check(widget.memorySummary.indexOf("20576")>=0 && widget.memorySummary.indexOf("4000")>=0 && widget.memorySummary.indexOf("24576")>=0 && widget.memorySummary.indexOf("4915.2")>=0,"actual VRAM and threshold")
+   check(widget.statusReason.indexOf("80%")>=0,"compact memory policy")
+   check(widget.statusDetails.indexOf("OOM")>=0,"policy not OOM guarantee")
+   widget.acceptStatus({interval_minutes:60,state:"idle",guard:{decision:"unknown"},memory:{decision:"vram_unavailable"}})
+   check(widget.memorySummary.indexOf("unavailable")>=0,"missing telemetry distinct from low headroom")
    for (let serviceState of ["stopped","starting","ready","busy","stopping","failed"]) {
       widget.acceptStatus({state:"idle",guard:{decision:"safe"},interval_minutes:60,render_enabled:true,comfy_service:{managed:true,state:serviceState,reason:"fixture reason",owned:false}})
       let serviceLabel=label(widget.fullRepresentationItem,"comfyServiceStatus")

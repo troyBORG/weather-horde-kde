@@ -29,7 +29,7 @@ class ModelRefreshTests(unittest.TestCase):
         for local_missing in (True,False):
             with self.subTest(local_missing=local_missing), tempfile.TemporaryDirectory() as d:
                 c=wc.Controller(d,checkpoint='saved.safetensors',transport=Mock(),render_guard=lambda:'safe')
-                c.enforce_models=True;c.guard={'decision':'safe','free_mib':24000,'observed_at':time.time()}
+                c.enforce_models=True;c.guard={'decision':'safe','total_mib':24576,'free_mib':24000,'observed_at':time.time()}
                 c.settings['location']={'town':'fixture'};c.displays=[{'id':'TEST','width':64,'height':128}]
                 c.models=[dict(id=c.checkpoint,**PROFILES['sdxl'])]
                 c.transport.validate_checkpoint.side_effect=SubmissionDeferred('Missing from live loader')
