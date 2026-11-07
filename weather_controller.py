@@ -13,7 +13,7 @@ from safety import collect
 from scene import resolve_zip, weather_preview, PROMPT_VERSION, condition, fetch_json, compose_for_target, FRAMING_MODES, COMPOSITION_VERSION
 
 import hashlib
-SERVICE_VERSION = "0.1.11"
+SERVICE_VERSION = "0.1.12"
 # Captured once at import: disk updates must never masquerade as a reload.
 # Include local runtime modules: a safety-only fix must invalidate old handshakes.
 SOURCE_REVISION = hashlib.sha256(b''.join(
@@ -25,6 +25,7 @@ SCENE_KINDS = ('rural', 'townpark', 'woodland', 'urban', 'river')
 SCENE_CHOICES = SCENE_KINDS + ('random',)
 
 INTERVALS = (5, 10, 15, 30, 60, 120, 240, 480, 720, 1440)
+FORCE_CONFIRMATION = 'I accept gaming stutter, VR disruption and GPU OOM risk'
 
 
 class Controller:
@@ -46,7 +47,13 @@ class Controller:
         self.observation = None
         self.override_deadline = 0.0
         self.override_generation = 0
+        self.force_consent = False
+        self.force_generation = 0
+        self.force_draining = False
+        self.force_pending_due = False
+        self.force_missed_cadence = 0
         self.settings = {'connected_panorama': False, 'automation_enabled': False, 'automation_kind': 'prompt_preview', 'automation_target':'all', 'interval_minutes': 60, 'location': None}
+        self.settings['automation_policy'] = 'guarded'
         from holiday_settings import DEFAULTS
         import copy
         self.settings.update(copy.deepcopy(DEFAULTS))
@@ -100,6 +107,8 @@ class Controller:
         self.candidates = {}
         if (self.root / 'settings.json').exists():
             self.settings.update(json.loads((self.root / 'settings.json').read_text()))
+        if self.settings.get('automation_policy') not in ('guarded', 'force'):
+            self.settings['automation_policy'] = 'guarded'
         self.calendar_settings_notice = ''
         from holiday_settings import validate_settings
         try:
@@ -167,11 +176,11 @@ class Controller:
         except (OSError,ValueError,RuntimeError,subprocess.SubprocessError):
             self.model_notice = 'Local model discovery unavailable; rendering blocked'
 
-    def model_gate(self):
+    def model_gate(self, *, resources=True):
         from safety import vram_eligibility
         profile = self.selected_profile()
         if self.enforce_models and profile is None: return 'unreviewed_model'
-        return vram_eligibility(self.guard) if profile else 'safe'
+        return vram_eligibility(self.guard) if profile and resources else 'safe'
 
     def refresh_models(self):
         from model_catalog import discover_models
@@ -249,12 +258,66 @@ class Controller:
         return {'active': remaining > 0, 'remaining_seconds': math.ceil(remaining),
                 'scope': 'manual_image_previews_only'}
 
+    def force_status(self):
+        selected = self.settings['automation_policy'] == 'force'
+        return {'active': selected and self.force_consent,
+                'generation': self.force_generation,
+                'pending_cadence': self.force_pending_due,
+                'missed_cadence': self.force_missed_cadence,
+                'reason': 'Force revoked; owned job draining' if self.force_draining else
+                          'Force Generate + Apply' if selected and self.force_consent else
+                          'Reconfirm forced mode' if selected else 'Guarded'}
+
+    def refresh_timing(self):
+        """Deadlines are earliest eligibility, never a render/apply guarantee."""
+        import math
+        now, mono = time.time(), time.monotonic()
+        s = self.scheduler
+        forced = self.settings['automation_policy'] == 'force'
+        coordinated = forced or any(self.settings.get(k, False) for k in
+                                   ('catch_up_refresh','holiday_themes','seasonal_themes'))
+        timing = {'state':'cadence_wait', 'reason':'',
+                  'cadence_due_at':self.next_eligible_at,
+                  'retry_due_at':None, 'next_attempt_at':None,
+                  'pending_targets':sorted(s.pending),
+                  'pending_cadence':self.force_pending_due}
+        if not self.settings['automation_enabled']:
+            timing.update(state='disabled', reason='Auto is off')
+        elif forced and not self.force_status()['active']:
+            timing.update(state='blocked', reason=self.force_status()['reason'])
+        elif self.override_status()['active']:
+            timing.update(state='blocked', reason='Testing override pauses automation')
+        elif coordinated and s.permanent_error:
+            timing.update(state='action_required', reason=s.permanent_error)
+        elif s.active or self.render_lock.locked() or (self.root/'inflight.json').exists():
+            timing.update(state='rendering', reason='Waiting for owned work to finish or reconcile')
+        elif coordinated:
+            status = s.status(mono)
+            if s.pending and math.isfinite(s.retry_at) and s.retry_at > mono:
+                timing['retry_due_at'] = now + s.retry_at - mono
+            if (s.safe_since is None or s.last_observed is None or
+                    not 0 <= mono-s.last_observed <= s.observation_ttl or status['settling_seconds']):
+                timing.update(state='blocked', reason=status['activity_reason'] or 'settling')
+            elif timing['retry_due_at'] is not None:
+                timing.update(state='retry_wait', reason=s.retry_reason,
+                              next_attempt_at=timing['retry_due_at'])
+            elif s.pending or self.force_pending_due:
+                timing.update(state='pending', next_attempt_at=now)
+            elif forced:
+                timing['next_attempt_at'] = max(now, self.next_eligible_at)
+            else:
+                timing.update(state='waiting', reason='Awaiting scheduler observation')
+        else:
+            timing['next_attempt_at'] = max(now, self.next_eligible_at)
+        return timing
+
     def status(self):
         from safety import memory_policy, vram_eligibility
         with self.lock:
             return {**self.settings, 'calendar':self.calendar_now(), 'calendar_settings_notice':self.calendar_settings_notice, 'api_version': 1, 'service_version': SERVICE_VERSION,
                     'source_revision': SOURCE_REVISION, 'prompt_version':PROMPT_VERSION,
                     'catch_up_refresh': self.settings.get('catch_up_refresh', False),
+                    'refresh_timing': self.refresh_timing(),
                     'refresh': self.scheduler.status(time.monotonic()),
                     'models':self.models, 'model_exclusions':self.model_exclusions, 'model_notice':self.model_notice, 'checkpoint':self.checkpoint,
                     'comparison_seed':self.settings.get('comparison_seed'),
@@ -263,10 +326,11 @@ class Controller:
                     'connected_panorama':self.settings.get('connected_panorama', False),
                     'scene_kind':self.settings.get('scene_kind','rural'), 'observation':self.observation_status(),
                     'comfy_service': self.comfy_service.status() if self.comfy_service else {'managed':False, 'state':'stopped', 'reason':'Service management not enabled'},
-                    'capabilities': {'connected_panorama':True, 'model_selection':True, 'scene_controls':True, 'scene_rotation':True, 'composition_controls':True, 'testing_override': True, 'manual_apply': self.wallpaper is not None, 'scheduled_images': bool(self.checkpoint)},
+                    'capabilities': {'forced_automation':True, 'connected_panorama':True, 'model_selection':True, 'scene_controls':True, 'scene_rotation':True, 'composition_controls':True, 'testing_override': True, 'manual_apply': self.wallpaper is not None, 'scheduled_images': bool(self.checkpoint)},
                     'apply_blocker': ('Select one monitor and a matching validated saved preview; manual Apply needs no GPU generation' if self.wallpaper else 'Owner wallpaper adapter not configured; no wallpaper changes available'),
                     'restore_available': self.wallpaper.available() if self.wallpaper else [],
                     'testing_override': self.override_status(), 'state': self.state, 'last_error': self.last_error,
+                    'force_override': self.force_status(),
                     'preview_only': self.wallpaper is None, 'render_enabled': bool(self.checkpoint), 'apply_enabled': self.wallpaper is not None,
                     'image_preview': self.image_preview, 'render_results': list(self.render_results),
                     'render_request': self.render_request,
@@ -332,11 +396,55 @@ class Controller:
         with self.lock: self.guard = guard
         return guard['decision']
 
+    def forced_policy(self, scheduled=False):
+        """Freeze resource consent, never identity, model, session or target proof."""
+        import copy
+        from safety import vram_eligibility
+        generation = self.force_generation
+        expected = copy.deepcopy(self.settings)
+        expected_displays = copy.deepcopy(self.displays)
+        receipt = {'policy':'force', 'generation':generation, 'enabled':True,
+                   'used':False, 'reasons':[], 'confirmation':FORCE_CONFIRMATION}
+        def consent():
+            if not self.force_status()['active'] or generation != self.force_generation:
+                return 'force_consent_revoked'
+            if self.settings != expected or (scheduled and not self.settings['automation_enabled']):
+                return 'automation_changed'
+            if self.displays != expected_displays: return 'layout_changed'
+            return 'safe'
+        def guard(startup=False):
+            decision = consent()
+            if decision != 'safe': return decision
+            unlocked = self.session_activity.poll()
+            if unlocked is not True: return 'session_locked' if unlocked is False else 'session_unknown'
+            raw = self.startup_guard() if startup else self.render_guard()
+            compatible = self.model_gate(resources=False)
+            if compatible != 'safe': return compatible
+            if not startup and (self.transport is None or self.transport.owned_gpu_pid() is None):
+                return 'unverified_comfy_ownership'
+            # Only resource/activity vocabulary is bypassable; new integrity
+            # decisions fail closed rather than inheriting the override.
+            if raw not in ('safe','game_active','vr_active','gpu_busy','unknown','insufficient_vram','vram_unavailable'):
+                return raw
+            for reason in (raw, vram_eligibility(self.guard)):
+                if reason != 'safe' and reason not in receipt['reasons']:
+                    receipt['reasons'].append(reason)
+            receipt['used'] = bool(receipt['reasons'])
+            # Resource and ownership reads may block across a lock transition.
+            # Reobserve session at the final permission boundary, including the
+            # WallpaperManager guard after its durable pending journal write.
+            unlocked = self.session_activity.poll()
+            if unlocked is not True: return 'session_locked' if unlocked is False else 'session_unknown'
+            return consent()  # slow reads cannot extend consent
+        guard.startup = lambda: guard(startup=True)
+        return guard, receipt
+
     def render_images(self, targets, location, policy=None, auto_apply=False, refresh_id=None):
         """Serial owned preview jobs; fail closed on ambiguous transport results."""
         from comfy_preview import build_workflow, SubmissionDeferred
         import hashlib
         original_guard, override_receipt = policy or self.manual_policy()
+        forced = override_receipt.get('policy') == 'force'
         self.quarantine = None
         layout = None
         stage = "preflight"
@@ -348,7 +456,7 @@ class Controller:
                     if plan_layout(self.displays) != layout: decision = 'layout_changed'
                 except (ValueError, KeyError, TypeError):
                     decision = 'layout_changed'
-            model_gate = self.model_gate()
+            model_gate = self.model_gate(resources=not forced)
             if model_gate != 'safe': decision = model_gate
             if decision != "safe" and self.quarantine is None:
                 with self.lock:
@@ -362,6 +470,9 @@ class Controller:
         outstanding = journal.exists()
         try:
             if outstanding: raise ValueError('Unreconciled submission journal; inspect owned Comfy job before removing journal')
+            if forced and auto_apply:
+                if self.wallpaper is None: raise ValueError('Wallpaper adapter not configured')
+                for target in targets: self.wallpaper.preflight(target)
             if self.settings.get('connected_panorama'):
                 from panorama import plan_layout, crop_master
                 targets = list(self.displays)
@@ -371,7 +482,7 @@ class Controller:
                     for target in targets: self.wallpaper.preflight(target)
             if self.enforce_models:
                 self.refresh_models()
-                if self.model_gate() != 'safe': raise SubmissionDeferred(self.model_gate())
+                if self.model_gate(resources=not forced) != 'safe': raise SubmissionDeferred(self.model_gate(resources=not forced))
             if self.comfy_service:
                 self.comfy_service.ensure_ready(getattr(original_guard, 'startup', self.startup_guard), existing_guard=guard)
             if self.enforce_models: self.transport.validate_checkpoint(self.checkpoint)
@@ -441,6 +552,8 @@ class Controller:
                         metadata = {'generated_at':time.time(), 'prompt_id':job, 'testing_override':override_receipt, 'quarantine_evidence':self.quarantine, 'targets':ids, 'positive':scene['positive'],
                                     'negative':scene['negative'], 'scene':scene,
                                     'workflow_sha256':hashlib.sha256(json.dumps(workflow,sort_keys=True).encode()).hexdigest()}
+                        metadata['automation_policy'] = override_receipt if forced else {'policy':'guarded'}
+                        if forced: metadata['testing_override'] = {'enabled':False, 'used':False}
                         stage = "publication"
                         if layout:
                             crops = crop_master(raw, layout)
@@ -541,7 +654,9 @@ class Controller:
                 with open(receipts/(secrets.token_hex(16)+'.json'), 'x') as f:
                     os.chmod(f.name, 0o600)
                     json.dump({'prompt_id':job, 'state':self.state,
-                               'testing_override':override_receipt, 'quarantine':self.quarantine}, f)
+                               'testing_override': {'enabled':False, 'used':False} if forced else override_receipt,
+                               'automation_policy': override_receipt if forced else {'policy':'guarded'},
+                               'quarantine':self.quarantine}, f)
             finally:
                 with self.lock:
                     if refresh_id and self.scheduler.active and self.scheduler.active['generation_id'] == refresh_id:
@@ -549,7 +664,13 @@ class Controller:
                         self.scheduler.fail(self.last_error or (self.quarantine or {}).get('reason') or 'refresh_incomplete', retryable=not outstanding, monotonic_now=time.monotonic())
                         self.save_refresh()
                 self.job_guard = None
-                if not outstanding: self.render_lock.release()
+                if not outstanding:
+                    with self.lock:
+                        if self.force_draining:
+                            self.settings['automation_policy'] = 'guarded'
+                            self.force_draining = False
+                            self.save()
+                        self.render_lock.release()
 
     def save(self):
         p = self.root / 'settings.tmp'
@@ -622,7 +743,8 @@ class Controller:
         if mode != 'prompt_preview':
             targets = self.target_displays({'target':self.settings['automation_target']})
             if not targets: raise ValueError('No live targets')
-            if self.model_gate() != 'safe': raise ValueError(self.model_gate())
+            decision = self.model_gate(resources=not self.force_status()['active'])
+            if decision != 'safe': raise ValueError(decision)
             if mode == 'image_wallpaper':
                 if self.wallpaper is None: raise ValueError('Wallpaper adapter not configured')
                 for display in targets: self.wallpaper.preflight(display)
@@ -644,15 +766,17 @@ class Controller:
 
     def catchup_tick(self, now, monotonic_now):
         s = self.scheduler
+        forced = self.settings['automation_policy'] == 'force'
         selected = 'all' if self.settings.get('connected_panorama') else self.settings['automation_target']
         targets = [d['id'] for d in self.displays if selected == 'all' or d['id'] == selected]
         if self.settings['automation_kind'] == 'prompt_preview': targets = ['prompt']
-        s.configure(self.settings['automation_enabled'] and not self.override_status()['active'],
+        s.configure(self.settings['automation_enabled'] and not self.override_status()['active'] and (not forced or self.force_status()['active']),
                     self.settings['automation_kind'], targets, self.settings['interval_minutes']*60)
         if self.saved_refresh_intent is not None:
             s.request('retry', self.saved_refresh_intent)
             self.saved_refresh_intent = None
         if not s.enabled:
+            self.force_pending_due = False
             self.save_refresh()
             return
         unlocked = self.session_activity.poll()
@@ -666,12 +790,29 @@ class Controller:
         self.refresh_started = True
         if unlocked is not None: self.last_unlocked = unlocked
         if reason == 'unlock': s.request(reason, targets)
-        s.reconcile(now, reason)
+        if forced:
+            # Request-anchored cadence, not completion + interval. At most one
+            # successor batch survives slow rendering or a suspend gap.
+            if now >= self.next_eligible_at:
+                periods = int((now-self.next_eligible_at)//s.interval)+1
+                self.next_eligible_at += periods*s.interval
+                if s.active:
+                    self.force_pending_due = True
+                    self.force_missed_cadence += periods
+                else:
+                    s.request('interval', targets)
+                    self.force_missed_cadence += max(0, periods-1)
+            if self.force_pending_due and not s.active:
+                s.request('interval', targets)
+                self.force_pending_due = False
+        else:
+            s.reconcile(now, reason)
         context = self.calendar_now(now)
         if not context['notice']:
             stale = [t for t in targets if self.calendar_success.get(s.mode, {}).get(t, context['context_hash']) != context['context_hash']]
             s.request('calendar_change', stale)
         safe = self.guard.get('decision') == 'safe' and 0 <= time.time()-self.guard.get('observed_at', 0) <= 15
+        if forced: safe = self.force_status()['active']
         s.observe_activity(safe, unlocked, monotonic_now)
         summary = (tuple(sorted(s.pending)), s.blocker, unlocked)
         if summary != getattr(self, '_refresh_summary', None):
@@ -718,7 +859,7 @@ class Controller:
     def tick(self, now=None, monotonic_now=None):
         now = time.time() if now is None else now
         with self.lock:
-            if (self.settings.get('catch_up_refresh', False) or self.settings.get('holiday_themes', False) or self.settings.get('seasonal_themes', False)):
+            if (self.settings['automation_policy'] == 'force' or self.settings.get('catch_up_refresh', False) or self.settings.get('holiday_themes', False) or self.settings.get('seasonal_themes', False)):
                 self.catchup_tick(now, time.monotonic() if monotonic_now is None else monotonic_now)
                 return
             if self.override_status()['active'] or not self.settings['automation_enabled'] or now < self.next_eligible_at: return
@@ -761,6 +902,7 @@ class Controller:
                 if set(body) - {'enabled', 'confirmation'} or type(body.get('enabled')) is not bool:
                     raise ValueError('enabled must be boolean')
                 if body['enabled']:
+                    if self.force_status()['active']: raise ValueError('Disable forced mode before testing override')
                     if body.get('confirmation') != 'I accept stutter and OOM risk':
                         raise ValueError('Explicit stutter and OOM risk confirmation required')
                     if self.render_lock.locked(): raise ValueError('Wait for the current preview job')
@@ -770,6 +912,20 @@ class Controller:
                 else:
                     self.override_deadline = 0.0
                 self.override_generation += 1
+                return self.status()
+            if method == 'PUT' and path == '/v1/force-override':
+                if set(body) - {'enabled', 'confirmation'} or type(body.get('enabled')) is not bool:
+                    raise ValueError('enabled must be boolean; unknown fields forbidden')
+                if body['enabled']:
+                    if body.get('confirmation') != FORCE_CONFIRMATION:
+                        raise ValueError('Explicit gaming stutter, VR disruption and GPU OOM risk confirmation required')
+                    if self.override_status()['active']: raise ValueError('Disable testing override before forced mode')
+                    if self.render_lock.locked(): raise ValueError('Wait for the current preview job')
+                self.force_generation += 1
+                self.force_consent = body['enabled']
+                self.force_draining = not body['enabled'] and self.render_lock.locked()
+                self.settings['automation_policy'] = 'force' if body['enabled'] or self.force_draining else 'guarded'
+                self.save()
                 return self.status()
             if method == 'PUT' and path == '/v1/observation':
                 if self.render_lock.locked(): raise ValueError('Wait for the current preview job')
@@ -804,7 +960,11 @@ class Controller:
             if method == 'PUT' and path == '/v1/settings':
                 from holiday_settings import DEFAULTS, validate_settings
                 validate_settings(body)
-                if set(body) - set(DEFAULTS) - {'connected_panorama','catch_up_refresh','checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
+                if set(body) - set(DEFAULTS) - {'automation_policy','connected_panorama','catch_up_refresh','checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
+                if 'automation_policy' in body and body['automation_policy'] not in ('guarded', 'force'):
+                    raise ValueError('Invalid automation policy')
+                if 'automation_policy' in body and self.render_lock.locked():
+                    raise ValueError('Wait for current preview; use force disable to revoke in flight')
                 if 'connected_panorama' in body and type(body['connected_panorama']) is not bool:
                     raise ValueError('connected_panorama must be boolean')
                 if 'catch_up_refresh' in body and type(body['catch_up_refresh']) is not bool:
@@ -848,6 +1008,9 @@ class Controller:
                 if update.get('automation_enabled') is True and self.override_status()['active']:
                     raise ValueError('Automation is paused during testing override')
                 self.settings.update(update)
+                if 'automation_policy' in update or update.get('automation_enabled') is False:
+                    self.force_consent = False
+                    self.force_generation += 1
                 if set(update) - {'holiday_preview_date'}:
                     self.saved_refresh_intent = None
                     self.scheduler.configure(False, self.settings['automation_kind'], [], self.settings['interval_minutes']*60)
@@ -923,10 +1086,13 @@ class Controller:
                         return decision
                     scheduled_guard.startup = scheduled_startup
                     policy = (scheduled_guard, {'enabled':False, 'used':False, 'reasons':[], 'confirmation':None, 'ttl_seconds':0})
+                forced = self.settings['automation_policy'] == 'force'
+                if forced and path == '/v1/render':
+                    policy = self.forced_policy(scheduled)
                 if path == '/v1/render' and self.comfy_service and self.transport.owned_gpu_pid() is None:
                     decision = getattr(policy[0], 'startup', self.startup_guard)()
-                elif policy and policy[1]['enabled']: decision = policy[0]()
-                if path == '/v1/render' and self.model_gate() != 'safe': decision = self.model_gate()
+                elif policy and (policy[1]['enabled'] or scheduled): decision = policy[0]()
+                if path == '/v1/render' and self.model_gate(resources=not forced) != 'safe': decision = self.model_gate(resources=not forced)
                 if path == '/v1/render' and decision != 'safe':
                     self.state = 'deferred'
                     self.last_error = 'No Comfy job submitted: '+decision
@@ -935,7 +1101,7 @@ class Controller:
                 if path == '/v1/render' and self.checkpoint:
                     targets = self.target_displays(body)
                     refresh_id = None
-                    if scheduled and (self.settings.get('catch_up_refresh') or self.settings.get('holiday_themes') or self.settings.get('seasonal_themes')):
+                    if scheduled and ((forced and self.scheduler.enabled) or self.settings.get('catch_up_refresh') or self.settings.get('holiday_themes') or self.settings.get('seasonal_themes')):
                         active = self.scheduler.active
                         if not active: return {'state':'deferred', 'reason':'No coordinator intent'}
                         refresh_id = active['generation_id']

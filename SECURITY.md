@@ -2,7 +2,7 @@
 
 The controller is a local authenticated service, not an Internet-facing server. Keep its loopback binding, token checks and request-origin protections. The native QML helper reads only the same user's private token under validated ownership/permissions. Do not forward the service externally, share tokens, execute as root or borrow another user's D-Bus session.
 
-Owner installers, model/queue identity checks, render safety and transactional wallpaper readback are security boundaries. Unknown state should fail closed. Testing override is explicit, bounded consent, not a bypass for ownership or malformed inputs.
+Owner installers, model/queue identity checks and transactional wallpaper readback remain security boundaries. Unknown owner/job/target state fails closed. Resource/activity admission is a separate policy: guarded by default, or explicitly consented Force for gaming/VR. Force can bypass GPU load, memory reserves and unavailable resource telemetry, never authentication, ownership, compatible model/graph validation, image integrity or locked-session/target checks. Testing override remains separate bounded manual-preview consent. See [forced refresh](docs/forced-refresh.md) for restart reconfirmation and in-flight revocation.
 
 Before reporting a bug, remove tokens, settings/location, usernames, home/mount paths, process arguments, image metadata, activity identifiers and private desktop screenshots. Provide a synthetic reproducer and reviewed source revision instead of raw state archives. Do not post a vulnerability containing credentials in a public issue. No dedicated private reporting address has been approved yet; ask the maintainer for a private channel before sharing sensitive details.
 
