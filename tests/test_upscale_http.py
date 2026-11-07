@@ -28,7 +28,7 @@ class UpscaleHttpTests(unittest.TestCase):
                     if name=='CheckpointLoaderSimple':
                         self.reply({name:{'input':{'required':{'ckpt_name':[['approved.safetensors']]}},'output':['MODEL','CLIP','VAE']}})
                         return
-                    inputs={'UpscaleModelLoader':{'model_name':['COMBO',{'options':[] if missing[0] else ['RealESRGAN_x2plus.pth']}]},
+                    inputs={'UpscaleModelLoader':{'model_name':['COMBO',{'options':['RealESRGAN_x2plus.pth'] if missing[0] else ['RealESRGAN_x4plus.pth']}]},
                       'ImageUpscaleWithModel':{'image':['IMAGE'],'upscale_model':['UPSCALE_MODEL']},
                       'ImageScale':{'image':['IMAGE'],'upscale_method':[['lanczos']],'crop':[['disabled']],'width':['INT',{'min':0,'max':16384}],'height':['INT',{'min':0,'max':16384}]}}
                     self.reply({name:{'input':{'required':inputs[name]}}})
@@ -48,7 +48,7 @@ class UpscaleHttpTests(unittest.TestCase):
                     t=ComfyTransport('http://127.0.0.1:'+str(server.server_port))
                     c=Controller(d,checkpoint='approved.safetensors',transport=t,render_guard=lambda:'safe',poll_seconds=.01)
                     c.settings['location']={'town':'fixture'}; c.displays=[{'id':'FIXTURE','width':w,'height':h}]
-                    c.guard={'decision':'safe','observed_at':time.time(),'free_mib':24000}
+                    c.guard={'decision':'safe','observed_at':time.time(),'total_mib':24576,'free_mib':24000}
                     c.models=[dict(id='approved.safetensors',**PROFILES[kind])]
                     c.refresh_models=lambda:c.models
                     c.enforce_models=True
@@ -60,7 +60,7 @@ class UpscaleHttpTests(unittest.TestCase):
                     self.assertEqual(workflow['5']['inputs']['cfg'],PROFILES[kind]['cfg'])
             missing[0]=True; before=len(calls)
             from comfy_preview import build_workflow, SubmissionDeferred
-            with self.assertRaises(SubmissionDeferred):
+            with self.assertRaisesRegex(SubmissionDeferred, 'RealESRGAN_x4plus'):
                 t.queue(build_workflow('approved.safetensors','fixture','fixture',3440,1440,1))
             self.assertEqual(len(calls),before)
             self.assertFalse(t.uncertain)

@@ -1,7 +1,7 @@
 """Local ComfyUI preview transport. Never applies wallpaper or interrupts jobs.
 
 Standard Comfy nodes, explicitly selected existing checkpoint, exact-aspect
-bounded latent geometry and reviewed existing RealESRGAN 2x + Lanczos resize.
+bounded latent geometry and reviewed existing RealESRGAN 4x + Lanczos resize.
 """
 import base64
 import hashlib
@@ -20,7 +20,7 @@ from gpu_identity import listener_identity
 MAX_BYTES = 32 * 1024 * 1024
 MAX_PIXELS = 1500000  # latent budget
 MAX_FINAL_PIXELS = 9000000
-UPSCALE_MODEL = 'RealESRGAN_x2plus.pth'  # existing local model, no download
+UPSCALE_MODEL = 'RealESRGAN_x4plus.pth'  # reviewed local model; no automatic download
 from displays import base_size
 
 
@@ -31,7 +31,7 @@ def build_workflow(checkpoint, positive, negative, width, height, seed, profile=
         raise ValueError('Native target exceeds validated output budget')
     bw, bh = base_size(width, height, profile['max_pixels'] if profile else MAX_PIXELS)
     if min(bw,bh) < 64 or (not profile and (width > bw*2 or height > bh*2)):
-        raise ValueError('Exact-aspect base cannot reach native size with reviewed 2x upscale')
+        raise ValueError('Exact-aspect base cannot reach native size with legacy no-profile 2x geometry limit')
     workflow = {
         '1': {'class_type':'CheckpointLoaderSimple','inputs':{'ckpt_name':checkpoint}},
         '2': {'class_type':'CLIPTextEncode','inputs':{'text':positive,'clip':['1',1]}},
@@ -120,7 +120,8 @@ class ComfyTransport:
             node=self.request('/object_info/CheckpointLoaderSimple')['CheckpointLoaderSimple']
             option=node['input']['required']['ckpt_name']
             names=option[0] if isinstance(option[0],list) else option[1]['options']
-            if identifier not in names or node['output'][:3] != ['MODEL','CLIP','VAE']:
+            if (not isinstance(names,list) or any(not isinstance(name,str) for name in names) or
+                identifier not in names or node['output'][:3] != ['MODEL','CLIP','VAE']):
                 raise ValueError('Checkpoint missing or loader contract changed')
         except (OSError,ValueError,KeyError,TypeError,IndexError) as exc:
             raise SubmissionDeferred('Checkpoint preflight failed; no submission: '+str(exc)) from exc
@@ -133,7 +134,7 @@ class ComfyTransport:
                 contracts[name] = self.request('/object_info/'+name)[name]['input']['required']
             option = contracts['UpscaleModelLoader']['model_name']
             models = option[0] if isinstance(option[0],list) else option[1]['options']
-            if UPSCALE_MODEL not in models: raise ValueError('Reviewed existing upscaler missing')
+            if UPSCALE_MODEL not in models: raise ValueError('Required local upscaler unavailable: ' + UPSCALE_MODEL)
             model = contracts['ImageUpscaleWithModel']
             if model['image'][0] != 'IMAGE' or model['upscale_model'][0] != 'UPSCALE_MODEL': raise ValueError('Model node contract changed')
             scale = contracts['ImageScale']

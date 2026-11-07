@@ -4,7 +4,7 @@ from pathlib import Path
 import os
 import safety
 
-GOOD=dict(processes=['kwin_wayland'],complete=True,age=0,sample_gap=10,utilization=[0,0],free_mib=20000)
+GOOD=dict(processes=['kwin_wayland'],complete=True,age=0,sample_gap=10,utilization=[0,0],total_mib=24576,free_mib=20000)
 
 class ElectronPolicyTests(ElectronIdentityTests):
     def test_identity_and_policy_integration(self):

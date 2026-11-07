@@ -6,7 +6,7 @@ class SafetyTests(unittest.TestCase):
     def test_guard_rejects_missing_busy_vr_game_and_stale_evidence(self):
         self.assertIsNotNone(importlib.util.find_spec('safety'), 'safety boundary missing')
         from safety import decide
-        good = {'processes': ['kwin_wayland', 'Discord'], 'complete': True, 'utilization': [2, 3], 'free_mib': 20000, 'sample_gap': 10, 'age': 0}
+        good = {'processes': ['kwin_wayland', 'Discord'], 'complete': True, 'utilization': [2, 3], 'total_mib':24576,'free_mib': 20000, 'sample_gap': 10, 'age': 0}
         self.assertEqual(decide(good), 'safe')
         for change, expected in [({'complete':False},'unknown'), ({'age':20},'unknown'),
                 ({'processes':['vrcompositor']},'vr_active'), ({'processes':['driftwood-xiloa']},'game_active'),
@@ -18,7 +18,7 @@ class SafetyTests(unittest.TestCase):
 
     def test_unknown_gpu_client_blocks_safe_decision(self):
         from safety import decide
-        snapshot = {'processes':['kwin_wayland'], 'complete':True, 'utilization':[0,0], 'free_mib':20000, 'sample_gap':10, 'age':0,
+        snapshot = {'processes':['kwin_wayland'], 'complete':True, 'utilization':[0,0], 'total_mib':24576,'free_mib':20000, 'sample_gap':10, 'age':0,
                     'gpu_clients':['/usr/bin/kwin_wayland', '/games/native-unknown']}
         self.assertEqual(decide(snapshot), 'unknown')
 

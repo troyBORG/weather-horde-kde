@@ -21,7 +21,7 @@ class UpscaleTests(unittest.TestCase):
             self.assertLessEqual(bw*bh,1500000)
             self.assertEqual(bw*h,bh*w)
             self.assertEqual((bw%8,bh%8),(0,0))
-            self.assertEqual(flow['7']['inputs']['model_name'],'RealESRGAN_x2plus.pth')
+            self.assertEqual(flow['7']['inputs']['model_name'],'RealESRGAN_x4plus.pth')
             self.assertEqual(flow['8']['class_type'],'ImageUpscaleWithModel')
             final=flow['10']['inputs']
             self.assertEqual((final['width'],final['height']),(w,h))

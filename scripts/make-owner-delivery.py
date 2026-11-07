@@ -49,6 +49,10 @@ def build(output):
     wrapper += 'exec python3 -B ./owner-bootstrap.py --archive ./source.tar.gz --sha256 '+digest+' --version '+shlex.quote(version)+' --candidate-name '+shlex.quote(name)+' "$@"\n'
     (output/'OWNER-DEPLOY.sh').write_text(wrapper)
     (output/'OWNER-DEPLOY.sh').chmod(0o700)
+    guided = wrapper.replace('exec python3 -B', 'export WEATHER_HORDE_OWNER="$(id -un)"\nexec python3 -B').replace(' "$@"', ' --guided "$@"')
+    (output/'deploy.sh').write_text(guided)
+    (output/'deploy.sh').chmod(0o700)
+    (output/'README.txt').write_text('Run bash deploy.sh in your own KDE terminal (never sudo). --help explains options; --preflight only extracts/verifies and authenticates. Auto must already be OFF on legacy controllers; keep the widget untouched during maintenance. Type UPDATE when prompted. Current entry preferences are preserved, not historical backups. No Plasma reload occurs: widget verification remains pending. Failure leaves recovery backups and never blindly restores Auto or restarts old code. OWNER-DEPLOY.sh --deploy remains the stopped-only path.\n')
     (output/'delivery.json').write_text(json.dumps({'git_commit':revision,'version':version,'candidate_name':name,'archive_sha256':digest,'bootstrap_sha256':boot_digest},indent=2)+'\n')
     print(output)
     print(digest)

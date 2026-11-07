@@ -10,4 +10,4 @@ class OwnerRelease(unittest.TestCase):
   source=path.read_text();self.assertNotIn("'/v1/apply'",source);self.assertNotIn("'/v1/restore'",source)
   with self.assertRaises(RuntimeError):m.check_status({'automation_enabled':True})
   with self.assertRaises(RuntimeError):m.check_status({'automation_enabled':False,'testing_override':{'active':True}})
-  m.check_status({'automation_enabled':False,'testing_override':{'active':False},'prompt_version':'night-lunar-2','service_version':'0.1.11','source_revision':m.SOURCE_REVISION})
+  m.check_status({'automation_enabled':False,'testing_override':{'active':False},'prompt_version':'night-lunar-2','service_version':'0.1.12','source_revision':m.SOURCE_REVISION})

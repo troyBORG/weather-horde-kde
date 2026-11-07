@@ -11,7 +11,7 @@ class OverrideTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, patch('weather_controller.time.monotonic',return_value=100) as clock:
             t=SimpleNamespace(owned_gpu_pid=lambda:123)
             c=Controller(d,transport=t,render_guard=lambda:c.guard['decision'])
-            c.guard={'decision':'game_active','free_mib':16000,'observed_at':time.time()}
+            c.guard={'decision':'game_active','total_mib':24576,'free_mib':16000,'observed_at':time.time()}
             normal, receipt=c.manual_policy()
             self.assertEqual(normal(),'game_active')
             self.enable(c)
@@ -21,7 +21,7 @@ class OverrideTests(unittest.TestCase):
                 self.assertEqual(guard(),'safe')
             self.assertTrue(receipt['used'])
             self.assertIn('game_active',receipt['reasons'])
-            for free in (0,11263,None,float('nan'),float('inf'),True):
+            for free in (0,4915,None,float('nan'),float('inf'),True):
                 c.guard['free_mib']=free
                 self.assertNotEqual(guard(),'safe')
             c.guard['free_mib']=11264
@@ -48,7 +48,7 @@ class OverrideTests(unittest.TestCase):
             with self.subTest(phase=phase), tempfile.TemporaryDirectory() as d, patch('weather_controller.time.monotonic',return_value=100) as clock:
                 t=Transport(); t.owned_gpu_pid=lambda:123
                 c=Controller(d,checkpoint='approved',transport=t,render_guard=lambda:'game_active',poll_seconds=0)
-                c.guard={'decision':'game_active','free_mib':16000,'observed_at':time.time()}
+                c.guard={'decision':'game_active','total_mib':24576,'free_mib':16000,'observed_at':time.time()}
                 c.displays=[{'id':'TEST','width':64,'height':128}]
                 c.settings['location']={'town':'fixture'}
                 self.enable(c)
@@ -153,7 +153,7 @@ class OverrideTests(unittest.TestCase):
         import safety
         self.assertTrue(hasattr(safety,'assess'), 'need diagnostic policy, not guessed pmon reason')
         good={'complete':True,'age':0,'processes':['kwin_wayland'],'gpu_clients':[],
-              'utilization':[1,1],'sample_gap':10,'free_mib':16000}
+              'utilization':[1,1],'sample_gap':10,'total_mib':24576,'free_mib':16000}
         for change,reason in [({'sample_gap':0},'sampling_window'),({'sample_gap':31},'sampling_window'),
              ({'complete':False},'graphical_owner_visibility'),({'gpu_clients':['spectacle']},'unrecognized_gpu_client'),
              ({'utilization':[None,None]},'utilization_unavailable'),({'free_mib':None},'vram_unavailable')]:

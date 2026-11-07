@@ -47,10 +47,12 @@ The widget has four sections: **Wallpaper** for layout, monitor and preview acti
 Once the controller and widget are installed and connected:
 
 1. **Confirm your location.** The suggested location is not automatic detection of where you live.
-2. **Choose a scene, model and monitor.** Start with one monitor to check the result.
+2. **Choose a scene, model and monitor.** In Scene, **Discover local Comfy models** refreshes compatible local checkpoints without changing your selection or starting generation. Expand **Excluded models** for reasons. See [model discovery and compatibility limits](docs/model-discovery.md). Start with one monitor to check the result.
 3. **Generate a preview.** This renders an image without applying it. If generation is deferred, read the status reason.
 4. **Select that monitor and apply the preview.** Manual Apply requires one monitor, not “all.” Restore is a separate action when a saved restore target is available.
 5. **Enable Auto only if you want it.** Choose whether it previews prompts, generates images, or also changes wallpapers. Review the target monitors and interval before enabling it.
+
+Native-size outputs use the reviewed [RealESRGAN 4× restoration workflow](docs/upscaling.md).
 
 AI images may not match every detail of the weather or prompt. Inspect a preview before relying on a scene's accuracy.
 
@@ -62,6 +64,10 @@ Refresh intervals include 5, 10, 15 and 30 minutes, as well as longer choices. E
 Catch-up refresh is opt-in. Once the session is known to be unlocked and fresh safety observations are valid, there is no extra 60-second settling requirement. Other safety checks, retry delays and errors can still defer generation.
 
 The Schedule explanation reflects the [current refresh policy](docs/requested-refresh-0.1.11.md). Older loaded widgets may still mention “60 safe seconds”; check Advanced → Build identity after an owner-approved widget reload.
+
+### Optional forced gaming refresh (0.1.12 review candidate)
+
+Schedule → **Force Generate + Apply (gaming/VR)** requires a separate risk acknowledgment. It permits scheduled generation and application during games/VR and adverse or unavailable GPU/VRAM telemetry, accepting stutter, VR disruption, OOM and application-crash risk. **Auto, Generate + Apply, targets and interval stay unchanged**: configure them separately, including the existing 5-minute choice. Five minutes is a request target, not a completion guarantee. Owner/queue/model/image/target checks and locked-session deferral remain. Restart requires reconfirmation; Disable Force or Auto revokes in-flight application permission. The original ten-minute Testing override remains separate. See [policy and limitations](docs/forced-refresh.md). Source/package availability does not mean owner installation or activation.
 
 </details>
 

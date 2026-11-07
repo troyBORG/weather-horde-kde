@@ -15,6 +15,12 @@ PlasmoidItem {
     property double clockNow: Date.now()
     property var guardDetails: ({})
     property bool overrideSupported: false
+    property bool forceSupported: false
+    property bool forceActive: false
+    property string forceReason: "Guarded"
+    property int forceMissed: 0
+    property double forceNextAttempt: 0
+    property var forceTiming: ({})
     property string serviceVersion: "unknown (legacy controller)"
     property string applyBlocker: "Controller not verified"
     readonly property string applyEligibilityText: !online ? "Apply unavailable: controller disconnected" : !applySupported ? applyBlocker : selectedTarget === "all" ? "Apply blocked: select one monitor" : !imagePreviewReady ? "Apply blocked: no validated saved preview. Quarantined output cannot be applied." : previewTargets.indexOf(selectedTarget) < 0 ? "Apply blocked: saved preview does not match selected monitor" : "Ready: apply the saved image to " + selectedTarget + ". No Comfy startup or regeneration required."
@@ -37,6 +43,8 @@ PlasmoidItem {
     readonly property string statusTitle: {
         if (controllerToken.length < 32) return "Not paired"
         if (!online) return "Disconnected"
+        if (forceActive && !statusStale) return "Force · " + controllerState
+        if (forceReason === "Reconfirm forced mode") return forceReason
         if (overrideActive) return "Testing override — " + overrideRemaining + "s"
         if (effectiveGuard === "game_active") return "Paused — game detected"
         if (effectiveGuard === "vr_active") return "Paused — VR detected"
@@ -52,16 +60,23 @@ PlasmoidItem {
         if (!automationEnabled) return "Automation off"
         return "Idle — ready"
     }
+    property var memoryEvidence: ({})
+    function memoryText(m) {
+        if (!m || m.decision === "vram_unavailable" || m.total_mib === undefined) return "VRAM telemetry unavailable — rendering blocked"
+        return "VRAM " + Number(m.used_mib).toFixed(1) + " used / " + Number(m.total_mib).toFixed(1) + " MiB total · " + Number(m.free_mib).toFixed(1) + " free (need ≥ " + Number(m.required_free_mib).toFixed(1) + ") · max 80% used"
+    }
+    readonly property string memorySummary: statusStale || !online ? "VRAM telemetry unavailable — refresh required" : memoryText(memoryEvidence)
     readonly property string statusReason: {
         let reason = ""
         if (controllerToken.length < 32) reason = connectionSummary + ". Manual pairing remains available."
         else if (!online) reason = "Cannot reach the authenticated controller. Activity is not verified."
         else if (overrideActive) reason = "Manual previews may bypass activity guards. Stutter / OOM risk accepted. Ownership, queue and VRAM checks still apply. Raw guard: " + guardState
         else if (statusStale) reason = "Status is stale; current activity is not verified."
+        else if (forceActive) reason = "Force bypasses gaming/VR, GPU load and VRAM policy. Stutter / VR disruption / OOM risk accepted; owner, queue, unlocked session and target integrity remain required. Raw guard: " + guardState
         else if (effectiveGuard === "game_active") reason = "Game-like process detected by controller; new GPU previews are deferred."
         else if (effectiveGuard === "vr_active") reason = "VR process detected by controller; new GPU previews are deferred."
         else if (effectiveGuard === "gpu_busy") reason = "Sustained GPU load is above the safe threshold."
-        else if (effectiveGuard === "insufficient_vram") reason = "Free VRAM is below the controller safety reserve."
+        else if (effectiveGuard === "insufficient_vram") reason = memorySummary
         else if (effectiveGuard !== "safe") {
             const diagnostics = {
                 graphical_owner_visibility: "Controller cannot verify the graphical owner; run it in your KDE session.",
@@ -70,7 +85,7 @@ PlasmoidItem {
                 utilization_unavailable: "GPU utilization samples are unavailable.",
                 active_client_counters_unavailable: "Active-job per-client engine counters are incomplete.",
                 unexplained_gpu_load: "GPU load cannot be attributed exclusively to this job.",
-                vram_unavailable: "Free VRAM is unavailable; testing override cannot bypass this.",
+                vram_unavailable: "Total/free VRAM telemetry unavailable; testing override cannot bypass this.",
                 collector_read_failed: "A process / GPU telemetry read failed; check controller diagnostics."
             }
             reason = diagnostics[guardDetails.reason] || "Activity / GPU telemetry is incomplete or unknown; rendering is blocked."
@@ -81,9 +96,10 @@ PlasmoidItem {
         else reason = "Guard reports safe. Generate now previews images; Apply changes one selected monitor. Automation: " + automationScopeText + "."
         if (controllerState === "rendering_guard_blocked") reason += " A job is still in flight; its output will be quarantined, not applied."
         if (controllerState === "quarantined") reason = "Previous render quarantined: " + (quarantineEvidence ? quarantineEvidence.decision + " / " + quarantineEvidence.reason + " at " + new Date(quarantineEvidence.at*1000).toLocaleTimeString() : "original reason unavailable in this controller revision") + ". Current guard: " + effectiveGuard + ". Safe now does not release old output; Generate a new preview. No wallpaper was applied by that render."
+        if (controllerState === "quarantined" && quarantineEvidence && quarantineEvidence.memory) reason += " At " + quarantineEvidence.stage + ": " + memoryText(quarantineEvidence.memory)
         return reason
     }
-    readonly property string statusDetails: statusTitle + "\n" + connectionSummary + "\n" + statusReason + "\n" + automationSummary + "\nWallpaper changes: manual Apply / Restore, or explicitly enabled Auto\n" + checkSummary + "\nController: " + controllerState + " · guard: " + guardState + (guardDetails.free_mib !== undefined ? " · free VRAM: " + guardDetails.free_mib + " MiB" : "") + "\nActivity guards remain enforced unless testing override is explicitly confirmed."
+    readonly property string statusDetails: statusTitle + "\n" + connectionSummary + "\n" + statusReason + "\n" + automationSummary + "\nWallpaper changes: manual Apply / Restore, or explicitly enabled Auto\n" + checkSummary + "\nController: " + controllerState + " · guard: " + guardState + "\n" + memorySummary + "\n20% free reserve is policy, not a guarantee against OOM." + "\nGuarded is the default. Explicit Force consent bypasses resource/activity policy, never owner, queue or target integrity."
     Timer { interval: 1000; running: true; repeat: true; onTriggered: root.clockNow = Date.now() }
     // Mutable for isolated Plasma harness; request() enforces literal loopback.
     property string controllerBase: "http://127.0.0.1:8734"
@@ -123,12 +139,21 @@ PlasmoidItem {
     property string wallpaperGuardState: "unknown"
     property bool online: false
     property bool busy: false
+    property bool forceDisablePending: false
+    onBusyChanged: {
+        if (!busy && forceDisablePending) Qt.callLater(function() {
+            if (!busy && forceDisablePending) {
+                forceDisablePending = false
+                setForceOverride(false)
+            }
+        })
+    }
     property var activeRequest: null
     property bool catchupEnabled: false
     property var refreshState: ({})
     readonly property string refreshSummary: {
         if (!online || statusStale) return "Refresh: disconnected / last known; no current success verified"
-        if (!catchupEnabled) return "Catch-up disabled — interval policy unchanged"
+        if (!catchupEnabled && !forceActive) return "Catch-up disabled — interval policy unchanged"
         let pending = refreshState.pending || []
         let applied = (refreshState.last_success || {}).image_wallpaper || {}
         let history = Object.keys(applied).map(function(k) { return k + ": " + new Date(applied[k]*1000).toLocaleString() }).join(" · ")
@@ -173,7 +198,7 @@ PlasmoidItem {
     readonly property var sceneKeys: ["rural","townpark","woodland","urban","river","random"]
     readonly property var sceneLabels: ["Rural / farmland", "Town park", "Woodland edge", "Small-town street", "Riverbank", "Random — new scene each generation"]
     property bool connectedPanorama: false
-    readonly property string widgetBuild: "0.1.11 / sections-1 / panorama"
+    readonly property string widgetBuild: "0.1.12 / sections-1 / panorama / model-discovery-1"
     property string runtimeBuild: "Not verified"
     property bool panoramaSupported: false
     property bool sceneSupported: false
@@ -187,6 +212,7 @@ PlasmoidItem {
     property var localModels: []
     property string selectedCheckpoint: ""
     property string modelNotice: ""
+    property var modelExclusions: []
     function setObservation(fields) {
         request("PUT", "/v1/observation", fields, function(status) { root.acceptStatus(status) })
     }
@@ -215,6 +241,7 @@ PlasmoidItem {
         localModels = status.models || []
         selectedCheckpoint = status.checkpoint || ""
         modelNotice = status.model_notice || "Owner rollout required"
+        modelExclusions = status.model_exclusions || []
         if (status.preview && status.preview.weather_evidence) evidenceText = JSON.stringify(status.preview.weather_evidence, null, 2)
         reconnectDelayMs = reconnectMinimumMs
         reconnectTimer.stop()
@@ -222,10 +249,17 @@ PlasmoidItem {
         clockNow = lastStatusCheck
         guardDetails = status.guard || {}
         quarantineEvidence = status.quarantine || null
+        memoryEvidence = status.memory || {}
         renderEnabled = status.render_enabled === true
         serviceVersion = status.service_version || "unknown (legacy controller)"
         applyBlocker = status.apply_blocker || "Running controller cannot apply wallpapers; owner rollout required"
         overrideSupported = status.api_version === 1 && !!status.capabilities && status.capabilities.testing_override === true
+        forceSupported = status.api_version === 1 && !!status.capabilities && status.capabilities.forced_automation === true
+        forceActive = forceSupported && !!status.force_override && status.force_override.active === true
+        forceReason = status.force_override ? status.force_override.reason : "Controller update required"
+        forceMissed = status.force_override ? status.force_override.missed_cadence : 0
+        forceTiming = status.refresh_timing || ({state: "unavailable"})
+        forceNextAttempt = forceTiming.next_attempt_at || 0
         overrideServerSeconds = status.testing_override && status.testing_override.active ? status.testing_override.remaining_seconds : 0
         applySupported = status.api_version === 1 && !!status.capabilities && status.capabilities.manual_apply === true
         scheduledImagesSupported = !!status.capabilities && status.capabilities.scheduled_images === true
@@ -373,6 +407,18 @@ PlasmoidItem {
         request("PUT", "/v1/testing-override", {enabled: enabled, confirmation: enabled ? "I accept stutter and OOM risk" : ""}, function(status) {
             acceptStatus(status)
             actionNotice = enabled ? "Testing override enabled for 10 minutes. Manual previews only; wallpaper untouched." : "Testing override OFF. In-flight output will be quarantined."
+        })
+    }
+    function setForceOverride(enabled) {
+        if (!enabled && busy) {
+            forceDisablePending = true
+            actionNotice = "Force disable queued — waiting for the current request; consent is not yet revoked."
+            return
+        }
+        if (!forceSupported) { actionNotice = "Forced automation unsupported; owner rollout required"; return }
+        request("PUT", "/v1/force-override", {enabled: enabled, confirmation: enabled ? "I accept gaming stutter, VR disruption and GPU OOM risk" : ""}, function(status) {
+            acceptStatus(status)
+            actionNotice = enabled ? "Force consent enabled. Auto, target and interval are unchanged." : "Force disabled. In-flight output cannot apply; only owned work drains."
         })
     }
     function applyPreview() {
@@ -562,7 +608,27 @@ PlasmoidItem {
                         enabled: root.online && !root.busy
                         onActivated: root.saveSettings({automation_target: currentIndex === 0 ? "all" : root.monitors[currentIndex-1].id})
                     }
-                    Label { text: "Auto generate + apply changes the chosen target(s) at the interval only while safe. Games/VR defer background work; testing overrides never authorize Auto. OFF until explicitly enabled."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    Label { text: "Auto generate + apply changes the chosen target(s). Guarded mode defers during games/VR. Separately confirmed Force bypasses resource checks; testing overrides never authorize Auto. OFF until explicitly enabled."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    ToolButton { id: forceDisclosure; objectName: "forceDisclosure"; checkable: true; text: (checked ? "▾ " : "▸ ") + "Force Generate + Apply (gaming/VR)" }
+                    ColumnLayout {
+                        visible: forceDisclosure.checked
+                        Layout.fillWidth: true
+                        Label { text: "May cause stutter, VR disruption, GPU OOM, failed renders or application crashes. Cadence is not guaranteed. Lock/inactive session, owner, queue, model, image and target integrity checks remain. Auto, Generate + Apply, targets and interval are separate controls; choose 5 minutes above/below if wanted."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                        CheckBox { id: forceRisk; objectName: "forceRisk"; text: "I accept gaming stutter, VR disruption and GPU OOM risk"; enabled: !root.forceActive; Layout.fillWidth: true }
+                        Switch {
+                            objectName: "forceToggle"
+                            text: root.forceActive ? "Disable Force" : "Enable Force"
+                            checked: root.forceActive
+                            enabled: root.online && root.forceSupported && (root.forceActive || (!root.busy && !root.overrideActive && forceRisk.checked))
+                            onClicked: {
+                                const desired = checked
+                                checked = Qt.binding(function() { return root.forceActive })
+                                root.setForceOverride(desired)
+                                forceRisk.checked = false
+                            }
+                        }
+                    }
+                    Label { objectName: "forceStatus"; text: root.forceReason + " · Auto " + (root.automationEnabled ? "ON" : "OFF") + " · " + root.automationTarget + " · " + root.intervalMinutes + " minutes · missed cadence: " + root.forceMissed + " · " + root.controllerState + "\nNext attempt: " + (root.online && !root.statusStale && root.forceNextAttempt > 0 ? new Date(root.forceNextAttempt*1000).toLocaleTimeString() + " earliest; subject to fresh checks" : "not scheduled / awaiting eligibility") + " · " + (root.forceTiming.state || "unavailable") + " · " + (root.forceTiming.reason || "") + "\nCadence request: " + (root.forceTiming.cadence_due_at ? new Date(root.forceTiming.cadence_due_at*1000).toLocaleTimeString() : "unavailable") + " · Retry due: " + (root.forceTiming.retry_due_at ? new Date(root.forceTiming.retry_due_at*1000).toLocaleTimeString() : "none") + " (completion not guaranteed)"; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     Switch {
                         objectName: "catchupRefreshToggle"
                         text: "Refresh after wake / unlock; pause while locked"
@@ -692,7 +758,7 @@ PlasmoidItem {
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     Label { text: root.weatherSource; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                    Button { text: "Discover local Comfy models"; enabled: root.online && root.modelSupported && !root.busy; onClicked: root.request("POST","/v1/models/refresh",{},function(status){root.acceptStatus(status)}) }
+                    Button { objectName: "discoverModelsButton"; text: "Discover local Comfy models"; enabled: root.online && root.modelSupported && !root.busy; onClicked: root.request("GET","/v1/models/refresh",null,function(status){root.acceptStatus(status)}) }
                     ComboBox {
                         objectName: "modelSelector"; Layout.fillWidth: true
                         model: root.localModels.map(function(m){return m.id + " · " + m.architecture + " · " + m.native_resolution + " native · ≥" + m.min_free_mib + " MiB free"})
@@ -700,7 +766,17 @@ PlasmoidItem {
                         enabled: root.online && root.modelSupported && !root.busy && root.localModels.length>0
                         onActivated: root.saveSettings({checkpoint:root.localModels[currentIndex].id})
                     }
-                    Label { text: "Selected: " + root.selectedCheckpoint + "\n" + root.modelNotice + "\nTraining resolution is not output resolution. Bounded exact-aspect generation → 2× upscaler → native-size Lanczos; does not guarantee fine detail."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    ToolButton {
+                        id: modelExclusionsToggle; objectName: "modelExclusionsToggle"
+                        text: (checked ? "▾ " : "▸ ") + "Excluded models (" + root.modelExclusions.length + ")"
+                        checkable: true; checked: false; visible: root.modelExclusions.length > 0
+                    }
+                    Label {
+                        objectName: "modelExclusionsText"; visible: modelExclusionsToggle.checked
+                        text: root.modelExclusions.map(function(m){return m.id + " — " + m.reason}).join("\n")
+                        textFormat: Text.PlainText; wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    Label { text: "Selected: " + root.selectedCheckpoint + "\n" + root.modelNotice + "\nTraining resolution is not output resolution. Bounded exact-aspect generation → 4× upscaler → native-size Lanczos. Upscaling improves apparent detail; it does not guarantee original fine detail."; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 }
             }
             }
@@ -814,7 +890,7 @@ PlasmoidItem {
             }
             Label { objectName: "comfyServiceStatus"; text: root.comfySummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
             Label { text: root.checkSummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Label { text: "Activity guards remain enforced unless testing override is explicitly confirmed."; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Label { text: "Guarded is the default. Explicit Force consent bypasses resource/activity policy, never owner, queue or target integrity."; Layout.fillWidth: true; wrapMode: Text.Wrap }
                     TextArea { Layout.fillWidth: true; Layout.preferredHeight: 120; text: root.evidenceText; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap }
             TextArea {
                 Layout.fillWidth: true; Layout.preferredHeight: 190

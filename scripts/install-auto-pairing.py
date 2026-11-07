@@ -24,7 +24,7 @@ def verify_release():
         raise RuntimeError('Release hash differs from the staged validation receipt')
     with zipfile.ZipFile(archive) as z:
         metadata = json.loads(z.read('metadata.json'))
-        if (metadata['KPlugin']['Id'] != PACKAGE or metadata['KPlugin']['Version'] != '0.1.11'
+        if (metadata['KPlugin']['Id'] != PACKAGE or metadata['KPlugin']['Version'] != '0.1.12'
                 or metadata.get('X-Plasma-API-Minimum-Version') != '6.0'):
             raise RuntimeError('Unexpected package metadata')
         for name in ('libweatherpairing.so', 'libweatherpairingplugin.so', 'qmldir'):

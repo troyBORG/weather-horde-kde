@@ -1,0 +1,11 @@
+# VRAM admission policy
+
+All reviewed SD1.5/SDXL profiles and the independent activity/startup/testing-override memory gate now share the same policy: **at most 80% of reported total VRAM used**, retaining at least 20% free. Equality passes. The model architecture, native resolution, diffusion pixel budget, steps and CFG are unchanged; the old per-profile 11264/12288 MiB minimum-free values are removed, not layered over this policy.
+
+The single-GPU NVIDIA sample collects total and free MiB together. Both must be finite numeric values (not booleans/strings), total must be positive and free must lie between zero and total. Freshness remains 15 seconds. Missing, malformed or stale telemetry fails closed as unavailable, separately from insufficient headroom. On 24576 MiB total, the free threshold is 4915.2 MiB; 13312 MiB used leaves 11264 MiB and passes the memory check. This scales with actual capacity, not a hardcoded card size.
+
+The policy remains enforced at admission and throughout an owned job, including independent outputs and connected panorama publication. Testing override cannot bypass memory, listener ownership or queue isolation. Existing game/VR/activity constraints and explicit override scope are unchanged. A genuine breach still latches quarantine; later safe samples cannot release that output. Job receipts retain the first reason, stage and allowlisted numeric memory sample, with no process arguments or secrets. Status provides used/free/total and required free; widget details explain the policy and distinguish unavailable telemetry.
+
+**80% is a resource policy, not a prediction or guarantee against CUDA OOM.** Allocation bursts, fragmentation and other workloads can still exhaust memory. This update does not force rendering or change owner consent/settings.
+
+The guided owner updater also includes the separately tested display-readiness correction: authenticated startup with empty displays retries within its existing deadline, while source, settings, override and managed-capability mismatches still fail immediately. Delivery requires entry Auto OFF and an owner-exclusive window. No Plasma restart is performed, so already-loaded widget code remains pending a normal owner reload/login.

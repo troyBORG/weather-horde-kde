@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Standalone, maintained owner bundle bootstrap. Generated wrapper pins archive hash.
-Never starts/stops services. No imports from candidate until full archive verification.
+Stopped-only deployment remains supported; --guided delegates explicit owner maintenance.
+No imports from candidate until full archive verification.
 """
 import argparse
 import hashlib
@@ -74,8 +75,11 @@ def main():
     parser.add_argument('--sha256', required=True)
     parser.add_argument('--version', required=True)
     parser.add_argument('--candidate-name', required=True)
-    parser.add_argument('--deploy', action='store_true')
+    parser.add_argument('--deploy', action='store_true', help='Existing stopped-only deployment')
+    parser.add_argument('--guided', action='store_true', help='Interactive owner backup/stop/install/start/verify; entry Auto OFF required')
+    parser.add_argument('--preflight', action='store_true', help='Checks only; with --guided authenticates runtime without mutation')
     args = parser.parse_args()
+    if args.deploy and (args.guided or args.preflight): parser.error('--deploy cannot be combined with --guided/--preflight')
     owner = pwd.getpwuid(os.getuid())
     if os.getuid() == 0 or os.environ.get('WEATHER_HORDE_OWNER') != owner.pw_name:
         raise RuntimeError('Set WEATHER_HORDE_OWNER to your KDE account in its terminal; never use sudo')
@@ -93,6 +97,10 @@ def main():
     old = result.stdout.strip()
     if not Path(old).is_absolute() or any(ord(c)<32 for c in old): raise RuntimeError('Cannot discover persistent source directory')
     candidate = prepare(args.archive, home/args.candidate_name, args.sha256, args.version)
+    if args.guided:
+        command = [sys.executable,'-B',str(candidate/'scripts/guided-update-owner.py'),'--old-root',old]
+        subprocess.run(command+(['--preflight'] if args.preflight else []), check=True)
+        return
     command = [sys.executable,'-B',str(candidate/'scripts/deploy-preserving-owner.py'),'--old-root',old]
     subprocess.run(command+['--preflight'], check=True)
     if args.deploy:

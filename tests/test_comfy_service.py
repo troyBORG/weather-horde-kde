@@ -74,7 +74,7 @@ class ControllerLifecycleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             c = Controller(td, checkpoint='test', managed_comfy=True)
             self.assertEqual(c.status()['comfy_service']['state'], 'stopped')
-            with patch('weather_controller.collect', return_value=({'decision':'game_active','observed_at':__import__('time').time(),'free_mib':24000}, None)) as collect:
+            with patch('weather_controller.collect', return_value=({'decision':'game_active','observed_at':__import__('time').time(),'total_mib':24576,'free_mib':24000}, None)) as collect:
                 self.assertEqual(c.startup_guard(), 'game_active')
                 self.assertIsNone(collect.call_args.args[1])
 

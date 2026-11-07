@@ -12,7 +12,7 @@ class ModelRuntime(unittest.TestCase):
             models=[dict(id='saved.safetensors',**PROFILES['sdxl'])]
             with patch('model_catalog.discover_models',return_value=models):c.enable_reviewed_models()
             self.assertEqual(c.checkpoint,'saved.safetensors')
-            c.guard={'decision':'safe','free_mib':5000,'observed_at':time.time()}
+            c.guard={'decision':'safe','total_mib':24576,'free_mib':4000,'observed_at':time.time()}
             c.displays=[{'id':'DP-2','width':1080,'height':1920}]
             r=c.dispatch('POST','/v1/render',{'target':'DP-2'})
             self.assertEqual(r['state'],'deferred');self.assertIn('vram',r['reason'])

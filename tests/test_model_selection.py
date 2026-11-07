@@ -10,12 +10,12 @@ class ModelSelection(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'fixture.safetensors'
             def write(context):
-                h={'model.diffusion_model.input_blocks.0.0.weight':{'shape':[320,4,3,3]},'model.diffusion_model.input_blocks.4.1.transformer_blocks.0.attn2.to_k.weight':{'shape':[640,context]},'first_stage_model.decoder.conv_out.weight':{'shape':[3,128,3,3]},'conditioner.embedders.1.model.text_projection':{'shape':[1280,1280]}}
-                raw=json.dumps(h).encode();p.write_bytes(struct.pack('<Q',len(raw))+raw)
+                from test_model_discovery import checkpoint
+                checkpoint(p, context)
             write(2048)
             self.assertEqual(inspect_model(p)['architecture'],'sdxl')
-            options=catalog({'natvisNaturalVision_v27.safetensors':str(p),'pony_diffusion_xl.safetensors':str(p),'foreign.safetensors':str(p)})
-            self.assertEqual([m['id'] for m in options],['natvisNaturalVision_v27.safetensors'])
+            options=catalog({'natvisNaturalVision_v27.safetensors':str(p),'custom_copy.safetensors':str(p),'foreign.safetensors':str(p)})
+            self.assertEqual([m['id'] for m in options],['custom_copy.safetensors','foreign.safetensors','natvisNaturalVision_v27.safetensors']) # Names are not architecture evidence.
             write(4096)
             with self.assertRaises(ValueError): inspect_model(p)
     def test_selection_seed_profile_and_busy(self):
