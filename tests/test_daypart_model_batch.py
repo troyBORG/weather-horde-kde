@@ -33,6 +33,32 @@ class BatchTests(unittest.TestCase):
         c.guard={'decision':'safe','total_mib':24576,'free_mib':24000,'observed_at':time.time()}
         return c,t
 
+    def test_restart_rotation_uses_last_published_checkpoint(self):
+        base=preview(); base['weather_evidence']['daypart']='night'
+        with tempfile.TemporaryDirectory() as d, patch('weather_controller.weather_preview',return_value=base), patch('secrets.choice',side_effect=lambda values:values[0]):
+            c,t=self.controller(d); c.settings['model_policy']['night']=['night','day']; c.save()
+            c.render_lock.acquire();c.render_images(c.displays,LOCATION)
+            self.assertEqual(t.graphs[0]['1']['inputs']['ckpt_name'],'night')
+            fresh=Controller(d,checkpoint='manual',transport=t,render_guard=lambda:'safe')
+            fresh.models=c.models;fresh.displays=c.displays;fresh.guard=c.guard
+            fresh.render_lock.acquire();fresh.render_images(fresh.displays,LOCATION)
+            self.assertEqual(t.graphs[-1]['1']['inputs']['ckpt_name'],'day')
+
+    def test_preflight_edit_cannot_change_admitted_policy_and_receipt(self):
+        import json
+        from pathlib import Path
+        from unittest.mock import Mock
+        base=preview(); base['weather_evidence']['daypart']='night'
+        with tempfile.TemporaryDirectory() as d, patch('weather_controller.weather_preview',return_value=base):
+            c,t=self.controller(d)
+            c.comfy_service=Mock()
+            c.comfy_service.ensure_ready.side_effect=lambda *a,**kw:c.settings['model_policy'].update(night=['day'])
+            c.render_lock.acquire(); c.render_images(c.displays,LOCATION)
+            self.assertEqual(c.state,'image_preview_ready',c.last_error)
+            self.assertEqual(t.graphs[0]['1']['inputs']['ckpt_name'],'night')
+            receipts=list((Path(d)/'job-receipts').glob('*.json'))
+            self.assertEqual(json.loads(receipts[0].read_text())['model_selection']['checkpoint'],'night')
+
     def test_status_exposes_policy_and_batch_evidence(self):
         with tempfile.TemporaryDirectory() as d:
             c,t=self.controller(d)
@@ -82,6 +108,9 @@ class BatchTests(unittest.TestCase):
                 c.render_lock.acquire(); c.render_images(c.displays,LOCATION,refresh_id=first['generation_id'])
             self.assertEqual(len(t.graphs),1)
             self.assertEqual(sorted(s.pending),['RIGHT'])
+            import json
+            events=json.loads((c.root/'refresh-events.json').read_text())
+            self.assertEqual(next(e['checkpoint'] for e in events if e['event']=='render_complete'),'night')
             base['weather_evidence']['daypart']='daytime'; t.live=['day','night']; t.on_queue=lambda:None
             s.observe_activity(True,True,s.retry_at)
             second=s.next_action(time.time(),s.retry_at)

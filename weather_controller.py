@@ -96,6 +96,8 @@ class Controller:
             self.transport = transport or ComfyTransport(guard=lambda: (self.job_guard or self.render_guard)())
             self.store = PreviewStore(self.root/'renders')
             self.image_preview = self.store.latest()
+            if self.image_preview:
+                self.previous_model = self.image_preview.get('scene', {}).get('checkpoint')
             pointers = self.root/"previews-by-target.json"
             if pointers.exists():
                 for target, identifier in json.loads(pointers.read_text()).items():
@@ -457,6 +459,9 @@ class Controller:
         """Serial owned preview jobs; fail closed on ambiguous transport results."""
         from comfy_preview import build_workflow, SubmissionDeferred
         import hashlib
+        import copy
+        policy_settings = copy.deepcopy(self.settings['model_policy'])
+        self.model_selection = None
         original_guard, override_receipt = policy or self.manual_policy()
         forced = override_receipt.get('policy') == 'force'
         self.quarantine = None
@@ -499,10 +504,8 @@ class Controller:
                 if self.model_gate(resources=not forced) != 'safe': raise SubmissionDeferred(self.model_gate(resources=not forced))
             if self.comfy_service:
                 self.comfy_service.ensure_ready(getattr(original_guard, 'startup', self.startup_guard), existing_guard=guard)
-            if self.enforce_models and self.settings['model_policy']['mode'] == 'single': self.transport.validate_checkpoint(self.checkpoint)
+            if self.enforce_models and policy_settings['mode'] == 'single': self.transport.validate_checkpoint(self.checkpoint)
             from model_selection import resolve
-            import copy
-            policy_settings = copy.deepcopy(self.settings['model_policy'])
             active = self.scheduler.active if refresh_id and self.scheduler.active and self.scheduler.active['generation_id'] == refresh_id else None
             frozen = active.get('model_batch') if active else None
             if frozen:
@@ -638,7 +641,7 @@ class Controller:
                                     pointer.replace(self.store.root/'latest')
                                 from wallpaper import atomic_json
                                 atomic_json(self.root/"previews-by-target.json", {target:record["id"] for target,record in self.previews_by_target.items()})
-                        if refresh_id: self.refresh_event('render_complete', generation_id=refresh_id, targets=ids, quarantined=blocked, checkpoint=self.checkpoint, scene=scene.get('scene_selection'), weather_at=scene.get('observed_at'))
+                        if refresh_id: self.refresh_event('render_complete', generation_id=refresh_id, targets=ids, quarantined=blocked, checkpoint=checkpoint, model_selection=self.model_selection, scene=scene.get('scene_selection'), weather_at=scene.get('observed_at'))
                         if blocked: return
                         if refresh_id and not auto_apply:
                             for target_id in ids: self.refresh_complete(target_id, refresh_id)
@@ -700,6 +703,7 @@ class Controller:
                     json.dump({'prompt_id':job, 'state':self.state,
                                'testing_override': {'enabled':False, 'used':False} if forced else override_receipt,
                                'automation_policy': override_receipt if forced else {'policy':'guarded'},
+                               'model_selection':self.model_selection,
                                'quarantine':self.quarantine}, f)
             finally:
                 with self.lock:
