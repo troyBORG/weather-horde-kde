@@ -1,0 +1,9 @@
+# KDE portal recognition — 0.1.13 preparation
+
+This patch adds only `/usr/lib/xdg-desktop-portal-kde` as a PID-proven desktop GPU client. It is **not** added to the basename allowlist. Kernel executable identity, same-owner process identity and start time, installed file identity, root-owned non-writable ancestry, and repeated stable evidence are required. Driver-reported paths/arguments, deleted or replaced executables, lookalike paths and unreadable evidence do not authorize this exception. Existing Electron and other fallback policies are unchanged.
+
+This removes one unknown-client cause, not gaming/VR, sustained GPU use, 20% VRAM reserve, session, queue or wallpaper integrity gates. Force remains an explicit separate memory-only consent; this patch does not enable it or Auto.
+
+Use the generated immutable delivery's `bash deploy.sh --preflight` from the owner's KDE terminal for extraction/authentication only. Deployment is separately approved: the guided updater requires entry Auto OFF and an exclusive window without widget/client actions, briefly stops/starts the controller, preserves entry settings and enablement, and performs no Plasma reload. Loaded widget verification remains pending a separately approved reload or normal login. No login persistence claim is made without owner-unit verification. See [guided update](guided-update.md).
+
+After successful deployment and widget reconnection, Schedule → Automation enables the saved mode/target/interval. Review these first; `Auto: generate + apply wallpapers` can submit generation and change wallpapers when eligible. Do not enable Force merely to resume ordinary Auto. The old rollout helper explicitly persisted OFF and launched `--automation-off`; the current guided updater preserves entry OFF. This does not prove which historical action last changed the owner's preference.

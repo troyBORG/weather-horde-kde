@@ -109,6 +109,56 @@ def electron_app_identity(pid, proc=Path('/proc')):
         return None
 
 
+PORTAL_EXECUTABLE = '/usr/lib/xdg-desktop-portal-kde'
+
+
+def portal_identity(pid, proc=Path('/proc')):
+    """Exact installed native portal, same-owner stable PID and binary evidence.
+
+    No NVIDIA argv fallback, basename admission or deleted-binary exception.
+    Like Electron classification this is not a hostile same-UID sandbox.
+    """
+    import stat
+
+    def installed():
+        path = Path(PORTAL_EXECUTABLE)
+        for item in (path, *path.parents):
+            meta = item.lstat()
+            if (stat.S_ISLNK(meta.st_mode) or meta.st_uid not in (0, INSTALL_UID)
+                    or meta.st_mode & 0o022):
+                raise ValueError('untrusted installation')
+        if not stat.S_ISREG(path.stat().st_mode):
+            raise ValueError('not regular')
+        return fingerprint(path.stat())
+
+    def fingerprint(meta):
+        return meta.st_dev, meta.st_ino, meta.st_size, meta.st_mtime_ns
+
+    def sample():
+        path = proc/str(pid)
+        owner = path.stat().st_uid
+        if owner != os.getuid(): raise ValueError('foreign owner')
+        with (path/'stat').open('rb') as stream: raw = stream.read(4097)
+        if len(raw) > 4096: raise ValueError('oversized evidence')
+        fields = raw.rsplit(b')', 1)[1].split()
+        if int(raw.split(b' ', 1)[0]) != pid: raise ValueError('pid mismatch')
+        birth = int(fields[19])
+        if birth <= 0: raise ValueError('invalid start')
+        executable = os.readlink(path/'exe')
+        if executable != PORTAL_EXECUTABLE: raise ValueError('wrong executable')
+        binary = fingerprint((path/'exe').stat())
+        if binary != trusted: raise ValueError('replaced executable')
+        return owner, birth, executable, binary
+
+    try:
+        if type(pid) is not int or pid <= 1: return False
+        trusted = installed()
+        first = sample()
+        return sample() == first and installed() == trusted
+    except (OSError, ValueError, IndexError, TypeError):
+        return False
+
+
 def gpu_client_identity(pid, reported):
     """Prefer the kernel's executable for this NVIDIA PID over mutable argv.
 
@@ -123,6 +173,8 @@ def gpu_client_identity(pid, reported):
     # Linux appends this exact marker to an unlinked running executable after
     # package replacement. Strip once, and only from the kernel readlink result;
     # arbitrary NVIDIA argv must never receive this normalization.
+    if executable == PORTAL_EXECUTABLE and portal_identity(pid):
+        return {'pid': pid, 'name': 'xdg-desktop-portal-kde', 'source': 'proc_installed_portal'}
     if executable == ELECTRON_RUNTIME:
         app = electron_app_identity(pid)
         if app:
@@ -191,6 +243,10 @@ def assess(snapshot):
                          for i in snapshot.get('gpu_client_identities', [])
                          if isinstance(i, dict) and i.get('source') == 'proc_electron_ancestry'
                          and i.get('name') in ('Element', 'Obsidian')}
+        verified_apps.update((i.get('pid'), i.get('name'))
+                             for i in snapshot.get('gpu_client_identities', [])
+                             if isinstance(i, dict) and i.get('source') == 'proc_installed_portal'
+                             and i.get('name') == 'xdg-desktop-portal-kde')
         if any(gpu_client_name(n) not in allowed and (pid, n) not in verified_apps
                and (owned is None or pid != owned)
                for n,pid in zip(clients,pids)): return 'unknown', 'unrecognized_gpu_client'
