@@ -18,6 +18,8 @@ class CheckpointContract(unittest.TestCase):
   server=ThreadingHTTPServer(('127.0.0.1',0),Handler);threading.Thread(target=server.serve_forever,daemon=True).start()
   try:
    t=ComfyTransport(f'http://127.0.0.1:{server.server_port}')
+   self.assertTrue(callable(getattr(t,'checkpoint_names',None)), 'live pool intersection API missing')
+   self.assertEqual(t.checkpoint_names(),['exact.safetensors'])
    t.validate_checkpoint('exact.safetensors')
    with self.assertRaises(SubmissionDeferred):t.validate_checkpoint('renamed.safetensors')
   finally:server.shutdown();server.server_close()

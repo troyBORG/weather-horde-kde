@@ -66,6 +66,9 @@ class Controller:
         self.display_error = 'Live display detection pending'
         self.preview = None
         self.checkpoint = checkpoint
+        self.batch_checkpoint = None
+        self.model_selection = None
+        self.previous_model = None
         self.models = []
         self.model_exclusions = []
         self.enforce_models = False  # run_controller enables; injected test transports stay offline
@@ -132,9 +135,11 @@ class Controller:
         self.calendar_success = {}
         self.saved_refresh_intent = None
         try:
+            self.saved_model_retry = None
             saved = json.loads((self.root/'refresh-state.json').read_text())
             if saved.get('mode') == self.settings['automation_kind']:
                 self.saved_refresh_intent = saved.get('pending', {})
+                self.saved_model_retry = saved.get('model_retry')
             self.scheduler.success = saved.get('success', {})
             self.calendar_success = saved.get('calendar_success', {})
             self.scheduler.permanent_error = saved.get('permanent_error', '')
@@ -183,6 +188,9 @@ class Controller:
     def model_gate(self, *, resources=True):
         from safety import vram_eligibility
         profile = self.selected_profile()
+        if self.batch_checkpoint is None and self.settings['model_policy']['mode'] == 'lighting':
+            # No graph is admitted here. The worker resolves the live pool first.
+            return vram_eligibility(self.guard) if resources else 'safe'
         if self.enforce_models and profile is None: return 'unreviewed_model'
         return vram_eligibility(self.guard) if profile and resources else 'safe'
 
@@ -197,7 +205,7 @@ class Controller:
         return self.models
 
     def selected_profile(self):
-        return next((m for m in self.models if m['id'] == self.checkpoint),None)
+        return next((m for m in self.models if m['id'] == (self.batch_checkpoint or self.checkpoint)),None)
 
     def observation_status(self):
         active = bool(self.observation and self.observation['expires_at'] > time.time() and
@@ -489,8 +497,33 @@ class Controller:
                 if self.model_gate(resources=not forced) != 'safe': raise SubmissionDeferred(self.model_gate(resources=not forced))
             if self.comfy_service:
                 self.comfy_service.ensure_ready(getattr(original_guard, 'startup', self.startup_guard), existing_guard=guard)
-            if self.enforce_models: self.transport.validate_checkpoint(self.checkpoint)
-            target_scenes = self.target_scene_previews(location, targets, generation=True)
+            if self.enforce_models and self.settings['model_policy']['mode'] == 'single': self.transport.validate_checkpoint(self.checkpoint)
+            from model_selection import resolve
+            import copy
+            policy_settings = copy.deepcopy(self.settings['model_policy'])
+            active = self.scheduler.active if refresh_id and self.scheduler.active and self.scheduler.active['generation_id'] == refresh_id else None
+            frozen = active.get('model_batch') if active else None
+            if frozen:
+                target_scenes = copy.deepcopy(frozen['scenes'])
+                if not layout:
+                    target_scenes = [entry for entry in target_scenes if entry['target']['id'] in {t['id'] for t in targets}]
+                self.model_selection = copy.deepcopy(frozen['selection'])
+                checkpoint = self.batch_checkpoint = self.model_selection['checkpoint']
+                if checkpoint not in [m['id'] for m in self.models]:
+                    raise SubmissionDeferred('Frozen batch checkpoint unavailable; restore it or cancel the batch')
+                if self.enforce_models: self.transport.validate_checkpoint(checkpoint)
+            else:
+                target_scenes = self.target_scene_previews(location, targets, generation=True)
+                evidence = target_scenes[0]['scene'].get('weather_evidence', {})
+                eligible = [m['id'] for m in self.models] if self.enforce_models or policy_settings['mode'] == 'lighting' else [self.checkpoint]
+                if self.enforce_models and policy_settings['mode'] == 'lighting':
+                    live = self.transport.checkpoint_names()
+                    eligible = [name for name in eligible if name in live]
+                selection = resolve(evidence.get('daypart'), policy_settings, eligible, self.checkpoint, self.previous_model)
+                self.model_selection = selection | {'source_evidence': copy.deepcopy(evidence)}
+                if not selection['checkpoint']: raise SubmissionDeferred(selection['reason'])
+                checkpoint = self.batch_checkpoint = selection['checkpoint']
+                self.previous_model = checkpoint
             groups = {}
             for entry in target_scenes:
                 target, scene = entry['target'], entry['scene']
@@ -500,14 +533,17 @@ class Controller:
             if layout:
                 for key, (_, scene) in list(groups.items()):
                     groups[key] = ([t['id'] for t in targets], scene)
-            seed = self.settings.get('comparison_seed')
+            seed = frozen['seed'] if frozen else self.settings.get('comparison_seed')
             if seed is None: seed = secrets.randbits(32)
+            if active is not None and policy_settings['mode'] == 'lighting' and not frozen:
+                active['model_batch'] = {'selection':copy.deepcopy(self.model_selection), 'scenes':copy.deepcopy(target_scenes), 'seed':seed}
+                self.save_refresh()
             profile = self.selected_profile()
             workflows = []
             for key, (ids, target_scene) in groups.items():
                 size = key[:2]
-                target_scene.update(checkpoint=self.checkpoint, comparison_seed=seed, inference_profile=profile)
-                workflow = build_workflow(self.checkpoint, target_scene['positive'], target_scene['negative'],
+                target_scene.update(checkpoint=checkpoint, comparison_seed=seed, inference_profile=profile, model_selection=copy.deepcopy(self.model_selection))
+                workflow = build_workflow(checkpoint, target_scene['positive'], target_scene['negative'],
                                           *size, seed, profile=profile)
                 workflows.append((size, ids, target_scene, workflow))
             with self.lock:
@@ -521,6 +557,8 @@ class Controller:
                         self.state = 'deferred'
                         self.last_error = 'No Comfy job submitted: '+decision
                     return
+                if self.enforce_models and policy_settings['mode'] == 'lighting':
+                    self.transport.validate_checkpoint(checkpoint)
                 journal.write_text(json.dumps({'client_id':getattr(self.transport,'client_id','test'), 'state':'submitting'}))
                 journal.chmod(0o600)
                 outstanding = True
@@ -668,6 +706,7 @@ class Controller:
                         self.scheduler.fail(self.last_error or (self.quarantine or {}).get('reason') or 'refresh_incomplete', retryable=not outstanding, monotonic_now=time.monotonic())
                         self.save_refresh()
                 self.job_guard = None
+                self.batch_checkpoint = None
                 if not outstanding:
                     with self.lock:
                         if self.force_draining:
@@ -725,6 +764,7 @@ class Controller:
         atomic_json(self.root/'refresh-state.json', {'success': self.scheduler.success,
                     'mode': self.scheduler.mode,
                     'pending': {k: sorted(v) for k, v in self.scheduler.pending.items()},
+                    'model_retry': self.scheduler.retry_batch or (self.scheduler.active if self.scheduler.active and self.scheduler.active.get('model_batch') else None),
                     'calendar_success': self.calendar_success,
                     'permanent_error': self.scheduler.permanent_error})
 
@@ -778,6 +818,9 @@ class Controller:
                     self.settings['automation_kind'], targets, self.settings['interval_minutes']*60)
         if self.saved_refresh_intent is not None:
             s.request('retry', self.saved_refresh_intent)
+            if s.enabled and self.saved_model_retry and set(self.saved_model_retry.get('targets', [])) <= set(s.pending):
+                s.retry_batch = self.saved_model_retry
+            self.saved_model_retry = None
             self.saved_refresh_intent = None
         if not s.enabled:
             self.force_pending_due = False

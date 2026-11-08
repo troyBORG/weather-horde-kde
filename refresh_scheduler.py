@@ -20,6 +20,7 @@ class RefreshScheduler:
         self.success = {}
         self.active = None
         self.safe_since = self.last_observed = None
+        self.retry_batch = None
         self.retry_at = 0
         self.failures = 0
         self.blocker = 'activity_unknown'
@@ -32,6 +33,7 @@ class RefreshScheduler:
             self.pending.clear()
             self.active = None
             self.retry_at = 0
+            self.retry_batch = None
             self.failures = 0
             self.retry_reason = ''
         self.enabled, self.mode = enabled, mode
@@ -69,6 +71,9 @@ class RefreshScheduler:
                 monotonic_now-self.safe_since < self.grace):
             return None
         self.active = {'generation_id': uuid.uuid4().hex, 'targets': sorted(self.pending), 'mode': self.mode}
+        if self.retry_batch:
+            self.active = self.retry_batch
+            self.retry_batch = None
         self.retry_reason = ''
         return dict(self.active)
 
@@ -84,6 +89,8 @@ class RefreshScheduler:
         return True
 
     def fail(self, reason, retryable=True, monotonic_now=0):
+        if self.active and self.active.get('model_batch'):
+            self.retry_batch = self.active
         self.active = None
         self.retry_reason = reason
         self.failures += 1
