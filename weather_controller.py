@@ -55,6 +55,8 @@ class Controller:
         self.settings = {'connected_panorama': False, 'automation_enabled': False, 'automation_kind': 'prompt_preview', 'automation_target':'all', 'interval_minutes': 60, 'location': None}
         self.settings['automation_policy'] = 'guarded'
         from holiday_settings import DEFAULTS
+        from model_selection import defaults as model_defaults
+        self.settings['model_policy'] = model_defaults()
         import copy
         self.settings.update(copy.deepcopy(DEFAULTS))
         self.state = 'idle'
@@ -107,6 +109,8 @@ class Controller:
         self.candidates = {}
         if (self.root / 'settings.json').exists():
             self.settings.update(json.loads((self.root / 'settings.json').read_text()))
+        from model_selection import merge_policy
+        self.settings['model_policy'] = merge_policy(model_defaults(), self.settings['model_policy'])
         if self.settings.get('automation_policy') not in ('guarded', 'force'):
             self.settings['automation_policy'] = 'guarded'
         self.calendar_settings_notice = ''
@@ -672,11 +676,11 @@ class Controller:
                             self.save()
                         self.render_lock.release()
 
-    def save(self):
+    def save(self, settings=None):
         p = self.root / 'settings.tmp'
         with open(p, 'w', encoding='utf-8') as f:
             os.chmod(p, 0o600)
-            json.dump(self.settings, f)
+            json.dump(self.settings if settings is None else settings, f)
             f.flush(); os.fsync(f.fileno())
         p.replace(self.root / 'settings.json')
 
@@ -960,7 +964,7 @@ class Controller:
             if method == 'PUT' and path == '/v1/settings':
                 from holiday_settings import DEFAULTS, validate_settings
                 validate_settings(body)
-                if set(body) - set(DEFAULTS) - {'automation_policy','connected_panorama','catch_up_refresh','checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
+                if set(body) - set(DEFAULTS) - {'model_policy','automation_policy','connected_panorama','catch_up_refresh','checkpoint','comparison_seed','scene_kind','scene_overrides','framing','automation_enabled', 'automation_kind', 'automation_target', 'interval_minutes', 'location_confirmation'}: raise ValueError('Unknown setting')
                 if 'automation_policy' in body and body['automation_policy'] not in ('guarded', 'force'):
                     raise ValueError('Invalid automation policy')
                 if 'automation_policy' in body and self.render_lock.locked():
@@ -987,6 +991,9 @@ class Controller:
                 if 'framing' in body and body['framing'] not in FRAMING_MODES: raise ValueError('Invalid framing')
                 if self.render_lock.locked() and any(k in body for k in ('connected_panorama','scene_kind','scene_overrides','framing')): raise ValueError('Wait for current preview')
                 update = dict(body)
+                if 'model_policy' in update:
+                    from model_selection import merge_policy
+                    update['model_policy'] = merge_policy(self.settings['model_policy'], update['model_policy'])
                 if 'automation_kind' in body:
                     if body['automation_kind'] not in ('prompt_preview','image_preview','image_wallpaper'):
                         raise ValueError('Invalid automation kind')
@@ -1007,7 +1014,9 @@ class Controller:
                     raise ValueError('Invalid interval')
                 if update.get('automation_enabled') is True and self.override_status()['active']:
                     raise ValueError('Automation is paused during testing override')
-                self.settings.update(update)
+                prospective = self.settings | update
+                self.save(prospective)
+                self.settings = prospective
                 if 'automation_policy' in update or update.get('automation_enabled') is False:
                     self.force_consent = False
                     self.force_generation += 1
@@ -1018,7 +1027,6 @@ class Controller:
                     self.save_refresh()
                     self.next_eligible_at = time.time() + self.settings['interval_minutes']*60
                 if 'checkpoint' in update: self.checkpoint = update['checkpoint']
-                self.save()
                 return self.status()
             if method == 'POST' and (path == '/v1/apply' or (path == '/v1/restore' and self.wallpaper)):
                 if self.wallpaper is None: raise ValueError('Owner wallpaper adapter not configured')
