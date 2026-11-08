@@ -111,10 +111,25 @@ class BatchTests(unittest.TestCase):
             import json
             events=json.loads((c.root/'refresh-events.json').read_text())
             self.assertEqual(next(e['checkpoint'] for e in events if e['event']=='render_complete'),'night')
+            # Resume the actual persisted partial batch in a new controller.
+            c.settings.update(automation_enabled=True,catch_up_refresh=True);c.save()
+            restarted=Controller(d,checkpoint='manual',transport=t,render_guard=lambda:'safe')
+            restarted.models=c.models;restarted.enforce_models=True;restarted.displays=c.displays;restarted.guard=c.guard
+            with patch.object(restarted.session_activity,'poll',return_value=False):
+                restarted.catchup_tick(time.time(),100)
+            c=restarted;s=c.scheduler
             base['weather_evidence']['daypart']='daytime'; t.live=['day','night']; t.on_queue=lambda:None
             s.observe_activity(True,True,s.retry_at)
             second=s.next_action(time.time(),s.retry_at)
             self.assertEqual(second['generation_id'],first['generation_id'])
+            c.displays[1]['width'] += 1
+            with patch.object(c,'refresh_models',return_value=c.models):
+                c.render_lock.acquire(); c.render_images([c.displays[1]],LOCATION,refresh_id=second['generation_id'])
+            self.assertEqual(len(t.graphs),1,'Changed geometry must not reuse frozen scenes')
+            self.assertEqual(c.state,'deferred')
+            c.displays[1]['width'] -= 1
+            s.observe_activity(True,True,s.retry_at)
+            second=s.next_action(time.time(),s.retry_at)
             with patch.object(c,'refresh_models',return_value=c.models):
                 c.render_lock.acquire(); c.render_images([c.displays[1]],LOCATION,refresh_id=second['generation_id'])
             self.assertEqual(c.state,'image_preview_ready',c.last_error)

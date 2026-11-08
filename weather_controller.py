@@ -509,6 +509,8 @@ class Controller:
             active = self.scheduler.active if refresh_id and self.scheduler.active and self.scheduler.active['generation_id'] == refresh_id else None
             frozen = active.get('model_batch') if active else None
             if frozen:
+                if layout != frozen['layout'] or any(t not in frozen['targets'] for t in targets):
+                    raise SubmissionDeferred('Frozen batch geometry changed; restore layout or cancel the batch')
                 target_scenes = copy.deepcopy(frozen['scenes'])
                 if not layout:
                     target_scenes = [entry for entry in target_scenes if entry['target']['id'] in {t['id'] for t in targets}]
@@ -541,7 +543,7 @@ class Controller:
             seed = frozen['seed'] if frozen else self.settings.get('comparison_seed')
             if seed is None: seed = secrets.randbits(32)
             if active is not None and policy_settings['mode'] == 'lighting' and not frozen:
-                active['model_batch'] = {'selection':copy.deepcopy(self.model_selection), 'scenes':copy.deepcopy(target_scenes), 'seed':seed}
+                active['model_batch'] = {'selection':copy.deepcopy(self.model_selection), 'scenes':copy.deepcopy(target_scenes), 'seed':seed, 'targets':copy.deepcopy(targets), 'layout':copy.deepcopy(layout)}
                 self.save_refresh()
             profile = self.selected_profile()
             workflows = []

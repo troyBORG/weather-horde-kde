@@ -40,7 +40,12 @@ Item {
   if(step===0){
    control("sceneTab").click()
    if(!control("modelModeSelector")){fail("POOL_CONTROLS_MISSING");return}
-   if(widget.modelPolicy.mode==="lighting") {step=20;return}
+   if(widget.modelPolicy.mode==="lighting") {
+    const missing=control("dayPool_2")
+    if(!missing.checked || missing.text.indexOf("unavailable")<0){fail("UNAVAILABLE_CHOICE_LOST");return}
+    if(widget.modelPolicy.mapping.twilight!=="day"){fail("MAPPING_NOT_PERSISTED");return}
+    step=20;return
+   }
    control("modelModeSelector").currentIndex=1; control("modelModeSelector").activated(1);step=1
   }else if(step>=1 && step<=5){
    const names=["dayPool_0","dayPool_1","dayPool_2","nightPool_1","nightPool_2"]
@@ -53,6 +58,12 @@ Item {
   }else if(step===21){
    const names=["daytime","golden hour","blue hour","twilight","night"]
    for(let i=0;i<names.length;i++){if(!control("mapping_"+names[i]).visible){fail("MAPPING_MISSING");return}}
+   if(widget.modelPolicy.mapping.twilight!=="day"){
+    control("mapping_twilight").currentIndex=0;control("mapping_twilight").activated(0);step=22;return
+   }
+   console.log("DAYPART_POOLS_QML_PASS");Qt.quit()
+  }else if(step===22){
+   if(widget.modelPolicy.mapping.twilight!=="day"){fail("MAPPING_SAVE_FAILED");return}
    console.log("DAYPART_POOLS_QML_PASS");Qt.quit()
   }
  }}
@@ -61,6 +72,7 @@ Item {
             env=os.environ|{'XDG_DATA_HOME':str(d/'share'),'XDG_CONFIG_HOME':str(d/'config'),'XDG_CACHE_HOME':str(d/'cache'),'XDG_RUNTIME_DIR':str(d/'runtime'),'QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','QT_FORCE_STDERR_LOGGING':'1','QT_LOGGING_RULES':'*.debug=false;qml.debug=true;*.warning=true;*.critical=true'}
             try:
                 for attempt in range(2):
+                    if attempt: c.models=c.models[:2]
                     before=len([x for x in calls if x[0]!='GET'])
                     p=subprocess.run(['dbus-run-session','--config-file',str(Path('tests/plasma-harness/dbus.conf').resolve()),'--',str(Path('artifacts/plasma-harness/plasma-harness').resolve()),str(d/'config.json'),str(d/'test.qml')],env=env,capture_output=True,text=True,timeout=15)
                     self.assertIn('DAYPART_POOLS_QML_PASS',p.stderr,p.stderr)
@@ -71,7 +83,7 @@ Item {
                     self.assertEqual(fresh.settings['model_policy']['night'],['B.safetensors','C.safetensors'])
                     self.assertEqual(fresh.checkpoint,'manual'); self.assertFalse(fresh.settings['automation_enabled'])
                     print(p.stderr)
-                self.assertEqual(len([x for x in calls if x[0]=='PUT']),6)
+                self.assertEqual(len([x for x in calls if x[0]=='PUT']),7)
                 self.assertFalse(any(x[0]=='POST' for x in calls),calls)
                 self.assertIsNone(c.render_thread)
             finally: server.shutdown();server.server_close()
