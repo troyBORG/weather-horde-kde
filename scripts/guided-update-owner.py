@@ -174,9 +174,24 @@ class OwnerUpdate:
             if status.get('source_revision') != self.expected_revision():
                 raise RuntimeError('Authenticated loaded source revision mismatch')
             self.preferences(saved, status)
-            for key in ('capabilities','render_enabled','apply_enabled'):
+            before_caps = self.before.get('capabilities')
+            after_caps = status.get('capabilities')
+            if not isinstance(before_caps, dict) or not isinstance(after_caps, dict):
+                raise RuntimeError('Runtime capability mismatch: capabilities schema')
+            # These reviewed feature advertisements are not enabled runtime consent.
+            # Preserve every existing value; admit only known True additions.
+            additions = set(after_caps) - set(before_caps)
+            if (not set(before_caps) <= set(after_caps)
+                or any(after_caps.get(key) != value for key, value in before_caps.items())
+                or not additions <= {'forced_automation', 'connected_panorama'}
+                or any(after_caps[key] is not True for key in additions)):
+                raise RuntimeError('Runtime capability mismatch: capabilities')
+            if ('forced_automation' in additions
+                and status.get('force_override', {}).get('active') is not False):
+                raise RuntimeError('Runtime capability mismatch: force consent not inactive')
+            for key in ('render_enabled', 'apply_enabled'):
                 if status.get(key) != self.before.get(key):
-                    raise RuntimeError('Runtime capability mismatch')
+                    raise RuntimeError('Runtime capability mismatch: '+key)
             if (status.get('testing_override',{}).get('active') is not False
                 or status.get('comfy_service',{}).get('managed') != self.before.get('comfy_service',{}).get('managed')):
                 raise RuntimeError('Runtime override/managed capability mismatch')

@@ -13,7 +13,7 @@ from safety import collect
 from scene import resolve_zip, weather_preview, PROMPT_VERSION, condition, fetch_json, compose_for_target, FRAMING_MODES, COMPOSITION_VERSION
 
 import hashlib
-SERVICE_VERSION = "0.1.12"
+SERVICE_VERSION = "0.1.13"
 # Captured once at import: disk updates must never masquerade as a reload.
 # Include local runtime modules: a safety-only fix must invalidate old handshakes.
 SOURCE_REVISION = hashlib.sha256(b''.join(

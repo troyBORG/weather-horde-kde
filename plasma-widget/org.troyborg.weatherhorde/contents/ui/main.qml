@@ -198,7 +198,7 @@ PlasmoidItem {
     readonly property var sceneKeys: ["rural","townpark","woodland","urban","river","random"]
     readonly property var sceneLabels: ["Rural / farmland", "Town park", "Woodland edge", "Small-town street", "Riverbank", "Random — new scene each generation"]
     property bool connectedPanorama: false
-    readonly property string widgetBuild: "0.1.12 / sections-1 / panorama / model-discovery-1"
+    readonly property string widgetBuild: "0.1.13 / sections-1 / panorama / model-discovery-1"
     property string runtimeBuild: "Not verified"
     property bool panoramaSupported: false
     property bool sceneSupported: false

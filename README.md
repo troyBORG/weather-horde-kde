@@ -65,7 +65,11 @@ Catch-up refresh is opt-in. Once the session is known to be unlocked and fresh s
 
 The Schedule explanation reflects the [current refresh policy](docs/requested-refresh-0.1.11.md). Older loaded widgets may still mention “60 safe seconds”; check Advanced → Build identity after an owner-approved widget reload.
 
-### Optional forced gaming refresh (0.1.12 review candidate)
+### KDE portal recognition (0.1.13 preparation)
+
+The exact installed KDE portal now has a PID-bound native-client classification; basename and driver-argument lookalikes remain unknown. This does not enable Auto/Force or bypass resource/activity checks. See [scope, evidence and deployment limits](docs/kde-portal-0.1.13.md).
+
+### Optional forced gaming refresh (introduced in 0.1.12)
 
 Schedule → **Force Generate + Apply (gaming/VR)** requires a separate risk acknowledgment. It permits scheduled generation and application during games/VR and adverse or unavailable GPU/VRAM telemetry, accepting stutter, VR disruption, OOM and application-crash risk. **Auto, Generate + Apply, targets and interval stay unchanged**: configure them separately, including the existing 5-minute choice. Five minutes is a request target, not a completion guarantee. Owner/queue/model/image/target checks and locked-session deferral remain. Restart requires reconfirmation; Disable Force or Auto revokes in-flight application permission. The original ten-minute Testing override remains separate. See [policy and limitations](docs/forced-refresh.md). Source/package availability does not mean owner installation or activation.
 

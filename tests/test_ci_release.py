@@ -82,7 +82,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(m.release_target('push', 'refs/tags/v0.1.11', '0.1.11', sha, '123', '1'),
                          ('v0.1.11', False))
         for event, ref in [('pull_request', 'refs/heads/main'), ('push', 'refs/heads/ci/foo'),
-                           ('push', 'refs/tags/v0.1.12'), ('push', 'refs/tags/v0.1.11-rc1'),
+                           ('push', 'refs/tags/v0.1.13'), ('push', 'refs/tags/v0.1.11-rc1'),
                            ('workflow_dispatch', 'refs/heads/main')]:
             with self.subTest(event=event, ref=ref), self.assertRaises(ValueError):
                 m.release_target(event, ref, '0.1.11', sha, '123', '1')

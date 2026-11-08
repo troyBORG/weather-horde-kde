@@ -7,7 +7,7 @@ class CapabilitiesTests(unittest.TestCase):
             c=Controller(d)
             s=c.dispatch('GET','/v1/status',{})
             self.assertEqual(s.get('api_version'), 1)
-            self.assertEqual(s.get('service_version'), '0.1.12')
+            self.assertEqual(s.get('service_version'), '0.1.13')
             self.assertEqual(len(s.get('source_revision','')),64)
             self.assertTrue(s['capabilities']['testing_override'])
             self.assertFalse(s['capabilities']['manual_apply'])
