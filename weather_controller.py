@@ -218,10 +218,10 @@ class Controller:
         from datetime import datetime, timezone
         return resolve_calendar(datetime.fromtimestamp(time.time() if now is None else now,timezone.utc),self.settings.get('location') or {},self.settings)
 
-    def scene_preview(self, location, scene_kind=None, fetch=None, calendar_context=None):
+    def scene_preview(self, location, scene_kind=None, fetch=None, calendar_context=None, now_utc=None):
         kwargs = {'fetch':fetch} if fetch is not None else {}
         return weather_preview(location, scene_kind=scene_kind or self.settings.get('scene_kind','rural'),
-                               calendar_settings=self.settings, calendar_context=calendar_context,
+                               calendar_settings=self.settings, calendar_context=calendar_context, now_utc=now_utc,
                                observation=self.observation if self.observation_status()['active'] else None, **kwargs)
 
     def target_scene_previews(self, location, targets, *, generation=False):
@@ -233,7 +233,8 @@ class Controller:
         responses, bases, result = {}, {}, []
         from calendar_context import resolve_calendar
         from datetime import datetime, timezone
-        calendar_context = resolve_calendar(datetime.fromtimestamp(time.time(),timezone.utc),location,self.settings)
+        now_utc = datetime.fromtimestamp(time.time(),timezone.utc)
+        calendar_context = resolve_calendar(now_utc,location,self.settings)
         def fetch(url):
             if url not in responses: responses[url] = fetch_json(url)
             return responses[url]
@@ -258,7 +259,7 @@ class Controller:
                     actual = prior if prior in SCENE_KINDS else SCENE_KINDS[0]
                     provisional = prior not in SCENE_KINDS
             if generation: self.resolved_scenes[key] = actual
-            if actual not in bases: bases[actual] = self.scene_preview(location, actual, fetch, calendar_context)
+            if actual not in bases: bases[actual] = self.scene_preview(location, actual, fetch, calendar_context, now_utc)
             composed = compose_for_target(bases[actual], target['width'], target['height'], self.settings.get('framing', 'auto'))
             composed['scene_selection'] = {'requested':requested, 'resolved':actual, 'provisional':provisional}
             result.append({'target':target, 'scene':composed})
@@ -332,13 +333,14 @@ class Controller:
                     'refresh_timing': self.refresh_timing(),
                     'refresh': self.scheduler.status(time.monotonic()),
                     'models':self.models, 'model_exclusions':self.model_exclusions, 'model_notice':self.model_notice, 'checkpoint':self.checkpoint,
+                    'model_policy':self.settings['model_policy'], 'model_selection':self.model_selection,
                     'comparison_seed':self.settings.get('comparison_seed'),
                     'framing':self.settings.get('framing','auto'), 'composition_version':COMPOSITION_VERSION,
                     'scene_overrides':dict(self.settings.get('scene_overrides',{})),
                     'connected_panorama':self.settings.get('connected_panorama', False),
                     'scene_kind':self.settings.get('scene_kind','rural'), 'observation':self.observation_status(),
                     'comfy_service': self.comfy_service.status() if self.comfy_service else {'managed':False, 'state':'stopped', 'reason':'Service management not enabled'},
-                    'capabilities': {'forced_automation':True, 'connected_panorama':True, 'model_selection':True, 'scene_controls':True, 'scene_rotation':True, 'composition_controls':True, 'testing_override': True, 'manual_apply': self.wallpaper is not None, 'scheduled_images': bool(self.checkpoint)},
+                    'capabilities': {'daypart_model_pools':True, 'forced_automation':True, 'connected_panorama':True, 'model_selection':True, 'scene_controls':True, 'scene_rotation':True, 'composition_controls':True, 'testing_override': True, 'manual_apply': self.wallpaper is not None, 'scheduled_images': bool(self.checkpoint)},
                     'apply_blocker': ('Select one monitor and a matching validated saved preview; manual Apply needs no GPU generation' if self.wallpaper else 'Owner wallpaper adapter not configured; no wallpaper changes available'),
                     'restore_available': self.wallpaper.available() if self.wallpaper else [],
                     'testing_override': self.override_status(), 'state': self.state, 'last_error': self.last_error,

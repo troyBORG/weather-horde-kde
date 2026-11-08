@@ -33,6 +33,21 @@ class BatchTests(unittest.TestCase):
         c.guard={'decision':'safe','total_mib':24576,'free_mib':24000,'observed_at':time.time()}
         return c,t
 
+    def test_status_exposes_policy_and_batch_evidence(self):
+        with tempfile.TemporaryDirectory() as d:
+            c,t=self.controller(d)
+            self.assertTrue(c.status()['capabilities'].get('daypart_model_pools'))
+            self.assertEqual(c.status()['model_policy'],c.settings['model_policy'])
+            self.assertIn('model_selection',c.status())
+
+    def test_scene_variants_share_one_solar_instant(self):
+        base=preview()
+        with tempfile.TemporaryDirectory() as d, patch('weather_controller.weather_preview',return_value=base) as weather:
+            c,t=self.controller(d); c.settings['scene_overrides']={'LEFT':'rural','RIGHT':'urban'}
+            c.target_scene_previews(LOCATION,c.displays,generation=True)
+            instants=[call.kwargs.get('now_utc') for call in weather.call_args_list]
+            self.assertEqual(len(instants),2); self.assertIsNotNone(instants[0]); self.assertEqual(instants[0],instants[1])
+
     def test_retry_context_survives_restart_without_stealing_coalesced_work(self):
         with tempfile.TemporaryDirectory() as d:
             c,t=self.controller(d); c.settings.update(automation_kind='image_preview', automation_enabled=True, catch_up_refresh=True); c.save()

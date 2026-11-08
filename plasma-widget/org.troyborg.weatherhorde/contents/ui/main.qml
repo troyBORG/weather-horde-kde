@@ -213,6 +213,26 @@ PlasmoidItem {
     property string selectedCheckpoint: ""
     property string modelNotice: ""
     property var modelExclusions: []
+    property bool modelPoolsSupported: false
+    property var modelPolicy: ({mode:"single", day:[], night:[], mapping:{}})
+    property string modelBatchSummary: "No model batch selected"
+    readonly property var solarDayparts: ["daytime", "golden hour", "blue hour", "twilight", "night"]
+    function poolEntries(pool) {
+        const saved = modelPolicy[pool] || []
+        const names = localModels.map(function(m){return m.id})
+        saved.forEach(function(name){if(names.indexOf(name)<0)names.push(name)})
+        return names.map(function(name){
+            const available = localModels.some(function(m){return m.id===name})
+            const excluded = modelExclusions.find(function(m){return m.id===name})
+            return {id:name, available:available, reason:available ? "compatible locally; live loader checked at render" : (excluded ? excluded.reason : "unavailable — retained saved choice")}
+        })
+    }
+    function togglePool(pool, name, selected) {
+        const values = (modelPolicy[pool] || []).filter(function(x){return x!==name})
+        if(selected)values.push(name)
+        const edit = {}; edit[pool]=values
+        saveSettings({model_policy:edit})
+    }
     function setObservation(fields) {
         request("PUT", "/v1/observation", fields, function(status) { root.acceptStatus(status) })
     }
@@ -230,6 +250,10 @@ PlasmoidItem {
         sceneOverrides = status.scene_overrides || ({})
         sceneSupported = !!status.capabilities && status.capabilities.scene_controls === true
         modelSupported = !!status.capabilities && status.capabilities.model_selection === true
+        modelPoolsSupported = !!status.capabilities && status.capabilities.daypart_model_pools === true
+        modelPolicy = status.model_policy || ({mode:"single", day:[], night:[], mapping:{}})
+        const selection = status.model_selection
+        modelBatchSummary = selection ? (selection.reason || ((selection.daypart || "unknown daypart") + " · " + selection.pool + " pool · " + selection.checkpoint)) : "No model batch selected"
         sceneKind = status.scene_kind || "rural"
         compositionSupported = !!status.capabilities && status.capabilities.composition_controls === true
         framingMode = status.framing || "auto"
@@ -766,6 +790,64 @@ PlasmoidItem {
                         enabled: root.online && root.modelSupported && !root.busy && root.localModels.length>0
                         onActivated: root.saveSettings({checkpoint:root.localModels[currentIndex].id})
                     }
+                    ComboBox {
+                        objectName: "modelModeSelector"; Layout.fillWidth: true
+                        model: ["Single model (above)", "Models by lighting"]
+                        currentIndex: root.modelPolicy.mode === "lighting" ? 1 : 0
+                        enabled: root.online && root.modelPoolsSupported && !root.busy
+                        onActivated: root.saveSettings({model_policy:{mode:currentIndex===1 ? "lighting" : "single"}})
+                    }
+                    Label { text: root.modelPoolsSupported ? "One checkpoint for both monitors and all retries. Pools start empty; choose models explicitly. Edits do not generate or apply images." : "Model pools require owner controller rollout."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    Repeater {
+                        model: ["day", "night"]
+                        delegate: ColumnLayout {
+                            id: poolColumn
+                            required property string modelData
+                            Layout.fillWidth: true
+                            visible: root.modelPolicy.mode === "lighting"
+                            Label { text: poolColumn.modelData === "day" ? "Day pool" : "Night pool"; font.bold: true }
+                            Repeater {
+                                model: root.poolEntries(poolColumn.modelData)
+                                delegate: CheckBox {
+                                    required property var modelData
+                                    required property int index
+                                    objectName: poolColumn.modelData + "Pool_" + index
+                                    Layout.fillWidth: true
+                                    text: modelData.id + " — " + modelData.reason
+                                    checked: (root.modelPolicy[poolColumn.modelData] || []).indexOf(modelData.id)>=0
+                                    enabled: root.online && root.modelPoolsSupported && !root.busy && (modelData.available || checked)
+                                    onClicked: root.togglePool(poolColumn.modelData, modelData.id, checked)
+                                }
+                            }
+                            Label { visible: (root.modelPolicy[poolColumn.modelData] || []).length===0; text: "Empty pool — generation waits when mapped here."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                        }
+                    }
+                    ToolButton {
+                        id: daypartMappingToggle; objectName: "daypartMappingToggle"
+                        text: (checked ? "▾ " : "▸ ") + "Solar daypart mapping"
+                        checkable: true; checked: false
+                        visible: root.modelPolicy.mode === "lighting"
+                    }
+                    ColumnLayout {
+                        visible: daypartMappingToggle.checked && root.modelPolicy.mode === "lighting"
+                        Layout.fillWidth: true
+                        Label { text: "Uses the scene's solar elevation, not clock windows. Twilight is transitional; map it independently."; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                        Repeater {
+                            model: root.solarDayparts
+                            delegate: RowLayout {
+                                required property string modelData
+                                Label { text: modelData; Layout.fillWidth: true }
+                                ComboBox {
+                                    objectName: "mapping_" + parent.modelData
+                                    model: ["Day", "Night"]
+                                    currentIndex: root.modelPolicy.mapping[parent.modelData] === "day" ? 0 : 1
+                                    enabled: root.online && root.modelPoolsSupported && !root.busy
+                                    onActivated: { const edit={}; edit[parent.modelData]=currentIndex===0 ? "day" : "night"; root.saveSettings({model_policy:{mapping:edit}}) }
+                                }
+                            }
+                        }
+                    }
+                    Label { objectName: "modelBatchSummary"; text: root.modelBatchSummary; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     ToolButton {
                         id: modelExclusionsToggle; objectName: "modelExclusionsToggle"
                         text: (checked ? "▾ " : "▸ ") + "Excluded models (" + root.modelExclusions.length + ")"
