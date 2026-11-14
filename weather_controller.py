@@ -268,6 +268,22 @@ class Controller:
                           'Force Generate + Apply' if selected and self.force_consent else
                           'Reconfirm forced mode' if selected else 'Guarded'}
 
+    def recovery_status(self):
+        """Read-only diagnosis, not a render preflight or service health probe.
+
+        Historical receipts remain intact. Only the normal explicit consent
+        endpoint may rearm Force; this report never retries work or starts Comfy.
+        """
+        required = self.settings['automation_policy'] == 'force' and not self.force_status()['active']
+        return {'consent_required': required,
+                'explanation': ('Force is selected but permission is not active. Permission is memory-only: '
+                                'a controller restart, Auto OFF, or policy change requires confirmation again. '
+                                'A safe GPU guard does not grant permission.' if required else
+                                'No missing Force consent. Other eligibility checks still apply.'),
+                'previous_error': self.last_error,
+                'busy': self.render_lock.locked() or (self.root/'inflight.json').exists(),
+                'scope': 'Status snapshot only; no render, wallpaper change or service restart'}
+
     def refresh_timing(self):
         """Deadlines are earliest eligibility, never a render/apply guarantee."""
         import math
@@ -330,7 +346,7 @@ class Controller:
                     'apply_blocker': ('Select one monitor and a matching validated saved preview; manual Apply needs no GPU generation' if self.wallpaper else 'Owner wallpaper adapter not configured; no wallpaper changes available'),
                     'restore_available': self.wallpaper.available() if self.wallpaper else [],
                     'testing_override': self.override_status(), 'state': self.state, 'last_error': self.last_error,
-                    'force_override': self.force_status(),
+                    'force_override': self.force_status(), 'recovery': self.recovery_status(),
                     'preview_only': self.wallpaper is None, 'render_enabled': bool(self.checkpoint), 'apply_enabled': self.wallpaper is not None,
                     'image_preview': self.image_preview, 'render_results': list(self.render_results),
                     'render_request': self.render_request,
@@ -1086,7 +1102,11 @@ class Controller:
                         return decision
                     scheduled_guard.startup = scheduled_startup
                     policy = (scheduled_guard, {'enabled':False, 'used':False, 'reasons':[], 'confirmation':None, 'ttl_seconds':0})
-                forced = self.settings['automation_policy'] == 'force'
+                # A saved Force preference without consent must not replace an
+                # explicitly consented manual testing policy. Freeze that choice
+                # here; expiry/revocation still invalidates the original job.
+                manual_testing = not scheduled and path == '/v1/render' and policy[1]['enabled']
+                forced = self.settings['automation_policy'] == 'force' and not manual_testing
                 if forced and path == '/v1/render':
                     policy = self.forced_policy(scheduled)
                 if path == '/v1/render' and self.comfy_service and self.transport.owned_gpu_pid() is None:
