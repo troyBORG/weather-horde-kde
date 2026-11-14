@@ -116,13 +116,18 @@ class ComfyTransport:
             return json.loads(raw)
 
     def validate_checkpoint(self, identifier):
+        if identifier not in self.checkpoint_names():
+            raise SubmissionDeferred('Checkpoint preflight failed; no submission: Checkpoint missing')
+
+    def checkpoint_names(self):
         try:
             node=self.request('/object_info/CheckpointLoaderSimple')['CheckpointLoaderSimple']
             option=node['input']['required']['ckpt_name']
             names=option[0] if isinstance(option[0],list) else option[1]['options']
             if (not isinstance(names,list) or any(not isinstance(name,str) for name in names) or
-                identifier not in names or node['output'][:3] != ['MODEL','CLIP','VAE']):
-                raise ValueError('Checkpoint missing or loader contract changed')
+                node['output'][:3] != ['MODEL','CLIP','VAE']):
+                raise ValueError('Checkpoint loader contract changed')
+            return names
         except (OSError,ValueError,KeyError,TypeError,IndexError) as exc:
             raise SubmissionDeferred('Checkpoint preflight failed; no submission: '+str(exc)) from exc
 

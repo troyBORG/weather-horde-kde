@@ -29,6 +29,12 @@ class CapabilityUpgradeTests(unittest.TestCase):
     def test_reviewed_additive_capabilities_are_not_runtime_flag_changes(self):
         self.verify({'forced_automation': True, 'connected_panorama': True})
 
+    def test_daypart_pool_advertisement_is_not_model_selection_consent(self):
+        self.verify({'daypart_model_pools': True})
+
+    def test_daypart_pool_false_addition_still_fails(self):
+        with self.assertRaises(RuntimeError): self.verify({'daypart_model_pools': False})
+
     def test_unknown_addition_still_fails(self):
         with self.assertRaises(RuntimeError): self.verify({'unreviewed': True})
 
