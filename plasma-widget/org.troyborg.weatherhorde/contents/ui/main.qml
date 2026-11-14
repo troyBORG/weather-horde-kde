@@ -21,6 +21,10 @@ PlasmoidItem {
     property int forceMissed: 0
     property double forceNextAttempt: 0
     property var forceTiming: ({})
+    property var recovery: ({})
+    property bool recoveryOpen: false
+    property string previousError: ""
+    readonly property bool consentRequired: recovery.consent_required === true || forceReason === "Reconfirm forced mode"
     property string serviceVersion: "unknown (legacy controller)"
     property string applyBlocker: "Controller not verified"
     readonly property string applyEligibilityText: !online ? "Apply unavailable: controller disconnected" : !applySupported ? applyBlocker : selectedTarget === "all" ? "Apply blocked: select one monitor" : !imagePreviewReady ? "Apply blocked: no validated saved preview. Quarantined output cannot be applied." : previewTargets.indexOf(selectedTarget) < 0 ? "Apply blocked: saved preview does not match selected monitor" : "Ready: apply the saved image to " + selectedTarget + ". No Comfy startup or regeneration required."
@@ -72,6 +76,7 @@ PlasmoidItem {
         else if (!online) reason = "Cannot reach the authenticated controller. Activity is not verified."
         else if (overrideActive) reason = "Manual previews may bypass activity guards. Stutter / OOM risk accepted. Ownership, queue and VRAM checks still apply. Raw guard: " + guardState
         else if (statusStale) reason = "Status is stale; current activity is not verified."
+        else if (consentRequired) reason = "Force permission is inactive, even if the guard is safe. Diagnose & repair offers explicit reconfirmation or Guarded mode."
         else if (forceActive) reason = "Force bypasses gaming/VR, GPU load and VRAM policy. Stutter / VR disruption / OOM risk accepted; owner, queue, unlocked session and target integrity remain required. Raw guard: " + guardState
         else if (effectiveGuard === "game_active") reason = "Game-like process detected by controller; new GPU previews are deferred."
         else if (effectiveGuard === "vr_active") reason = "VR process detected by controller; new GPU previews are deferred."
@@ -260,6 +265,8 @@ PlasmoidItem {
         forceMissed = status.force_override ? status.force_override.missed_cadence : 0
         forceTiming = status.refresh_timing || ({state: "unavailable"})
         forceNextAttempt = forceTiming.next_attempt_at || 0
+        recovery = status.recovery || ({})
+        previousError = status.last_error || ""
         overrideServerSeconds = status.testing_override && status.testing_override.active ? status.testing_override.remaining_seconds : 0
         applySupported = status.api_version === 1 && !!status.capabilities && status.capabilities.manual_apply === true
         scheduledImagesSupported = !!status.capabilities && status.capabilities.scheduled_images === true
@@ -285,7 +292,8 @@ PlasmoidItem {
         const applied = status.wallpaper_action
         if (image && applied && applied.verified && applied.state === "applied" && applied.preview_id === image.id)
             imagePreviewCaption = "Applied and read back on " + applied.target + " · " + image.width + "×" + image.height + " (last verified action)"
-        if (status.last_error) actionNotice = status.last_error
+        // last_error is a retained receipt, not a fresh failure on every poll.
+        // Keep it in the recovery history instead of overwriting a repair result.
         controllerState = status.state
         guardState = status.guard ? status.guard.decision : "unknown"
         wallpaperGuardState = status.wallpaper_guard || guardState
@@ -486,6 +494,16 @@ PlasmoidItem {
         Label { text: root.automationSummary; Layout.fillWidth: true; wrapMode: Text.Wrap }
         Label { visible: root.overrideActive; text: "Testing override ON · " + root.overrideRemaining + "s remaining · Auto paused"; font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
         Label { objectName: "renderActionNotice"; visible: text.length > 0; text: root.actionNotice; Layout.fillWidth: true; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight }
+        Button {
+            objectName: "diagnoseRepairButton"
+            text: "Diagnose & repair"
+            enabled: !root.busy
+            onClicked: {
+                repairRisk.checked = false
+                root.recoveryOpen = true
+                root.refreshStatus()
+            }
+        }
         TabBar {
             id: sectionTabs
             objectName: "sectionTabs"
@@ -507,6 +525,23 @@ PlasmoidItem {
             ColumnLayout {
                 width: pageScroll.availableWidth
                 spacing: 8
+                GroupBox {
+                    title: "Diagnose & repair"
+                    visible: root.recoveryOpen
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        anchors.fill: parent
+                        Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: !root.online || root.statusStale ? "Controller unavailable / status stale. Pair or reconnect first; no repair has run." : root.recovery.explanation || "Detailed diagnosis requires a controller update. Force consent is separate from GPU safety." }
+                        Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "Current scheduler: " + (root.forceTiming.state || "unavailable") + " — " + (root.forceTiming.reason || "no reported blocker") + "\n" + root.checkSummary }
+                        Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: root.comfySummary + "\nStatus snapshot only, not a fresh Comfy listener probe. This check never starts/restarts services, retries generation or applies wallpaper. Managed-service recovery is separate owner-approved work." }
+                        Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: root.overrideActive ? "Testing override is for manual previews only; Auto stays paused. Disable testing override before reconfirming Force." : "Reconfirming Force can resume already-enabled Auto generation/apply. Auto, target and interval are not changed. Old quarantined output is never released." }
+                        CheckBox { id: repairRisk; objectName: "repairRisk"; visible: root.consentRequired; Layout.fillWidth: true; text: "I accept gaming stutter, VR disruption and GPU OOM risk"; enabled: root.online && !root.busy && !root.overrideActive }
+                        Button { objectName: "repairRearm"; visible: root.consentRequired; text: "Reconfirm Force permission"; enabled: root.online && !root.statusStale && root.forceSupported && root.consentRequired && !root.busy && !root.overrideActive && !root.recovery.busy && repairRisk.checked; onClicked: { repairRisk.checked = false; root.setForceOverride(true) } }
+                        Button { objectName: "repairGuarded"; visible: root.consentRequired; text: "Use Guarded instead (keep Auto settings)"; enabled: root.online && !root.statusStale && root.forceSupported && !root.busy && !root.recovery.busy; onClicked: { repairRisk.checked = false; root.setForceOverride(false) } }
+                        Label { objectName: "repairHistory"; visible: root.previousError.length > 0; Layout.fillWidth: true; wrapMode: Text.Wrap; text: "Previous attempt (not a fresh health check): " + root.previousError }
+                        Button { objectName: "repairClose"; text: "Close — no further action"; onClicked: { repairRisk.checked = false; root.recoveryOpen = false } }
+                    }
+                }
             ColumnLayout {
                 objectName: "wallpaperPage"
                 Layout.fillWidth: true
