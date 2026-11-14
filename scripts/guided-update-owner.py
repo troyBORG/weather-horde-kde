@@ -183,7 +183,7 @@ class OwnerUpdate:
             additions = set(after_caps) - set(before_caps)
             if (not set(before_caps) <= set(after_caps)
                 or any(after_caps.get(key) != value for key, value in before_caps.items())
-                or not additions <= {'forced_automation', 'connected_panorama'}
+                or not additions <= {'forced_automation', 'connected_panorama', 'daypart_model_pools'}
                 or any(after_caps[key] is not True for key in additions)):
                 raise RuntimeError('Runtime capability mismatch: capabilities')
             if ('forced_automation' in additions
